@@ -22,6 +22,21 @@ def handle(request,root=None,start_daemon=True):
     if request.get('version')!=1:raise AgentError('PROTOCOL_VERSION','不支持的协议版本')
     op=request['operation'];p=request.get('payload',{})
     if op in READERS:return READERS[op](p)
+    if op == 'external_status':
+        # Read terminal-managed GPU groups without importing them into the platform queue.
+        completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
+        if completed.returncode:
+            raise AgentError('EXTERNAL_STATUS', '无法读取终端 GPU 分组', completed.stderr[-2000:])
+        items=[]
+        for line in completed.stdout.splitlines():
+            parts=line.split('\t')
+            if len(parts) < 3 or not parts[0].isdigit(): continue
+            group, gpus, path = parts[0], parts[1], parts[2]
+            items.append(dict(id='external-'+hashlib.sha1(path.encode()).hexdigest()[:16], display_name=Path(path).name,
+                              status='external_running', external=True, group=group,
+                              gpu_ids=[int(x) for x in gpus.split(',') if x.isdigit()], remote_path=path,
+                              ssh_alias=p.get('ssh_alias','gpu')))
+        return {'runs': items, 'source': 'gpu-groups'}
     root=Path(root or ROOT);store=Store(root)
     if op=='gpus':return gpu_status()
     if op in MUTATIONS and (root.parent/'read-only').exists():raise AgentError('READ_ONLY','远端组件尚未启用实验运行')
@@ -40,7 +55,11 @@ def handle(request,root=None,start_daemon=True):
         elif op=='events':result=[e for e in state['events'] if e['seq']>p.get('after',0)]
         elif op=='request_status':result=state['requests'].get(p['request_id'])
         elif op=='read_log':
-            run=state['runs'][p['run_id']]
+            run=state['runs'].get(p.get('run_id'))
+            if not run and p.get('path'):
+                result=files.read_file(dict(path=p['path'],name=p.get('name','train.log'),offset=p.get('offset',0),limit=p.get('limit',65536)))
+                return result
+            if not run: raise AgentError('RUN_NOT_FOUND','实验不在工作台队列中')
             name=p.get('name','train.log');path=run['remote_path']
             if name=='launch.log' or not (Path(path)/name).exists():
                 path=run.get('attempt_dir',path);name='launch.log'

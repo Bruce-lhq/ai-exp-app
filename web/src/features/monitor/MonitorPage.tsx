@@ -17,6 +17,7 @@ export const statusNames: Record<string, string> = {
   starting: "启动中",
   stopping: "停止中",
   accepted: "已提交",
+  external_running: "终端启动",
 };
 export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>([]),
@@ -250,6 +251,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
                   停止实验
                 </button>
               )}
+              {runs.find((x) => x.id === selected)?.status === "external_running" && <span className="muted">由终端启动，工作台仅监控</span>}
               {["stopped", "failed"].includes(
                 runs.find((x) => x.id === selected)?.status || "",
               ) && (
