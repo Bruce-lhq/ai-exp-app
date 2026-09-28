@@ -1,6 +1,6 @@
 # AI 实验平台
 
-第一版设计已确认，实施计划已编写，尚未开始实现。
+第一版设计已确认，当前实现已完成本地首版交付，正在进入真实远端实验前的验收阶段。
 
 完整第一版设计与验收场景见 [设计文档](docs/superpowers/specs/2026-09-28-ai-experiment-platform-design.md)，执行步骤见 [实施总计划](docs/superpowers/plans/2026-09-28-ai-experiment-platform.md)及其中链接的五份分阶段计划。下文为需求摘要；详细交互和数据规则以已确认设计文档为准。
 
