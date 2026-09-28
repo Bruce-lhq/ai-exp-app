@@ -67,8 +67,9 @@ export function chartConfiguration(
         borderColor: colorFor(s, i, appearance),
         backgroundColor: colorFor(s, i, appearance),
         borderWidth: 2.6,
-        pointRadius: 3.5,
-        pointHoverRadius: 5,
+        // The reference plot samples densely; visible markers make sparse runs look like bubbles.
+        pointRadius: 0,
+        pointHoverRadius: 4,
         tension: 0,
       })),
     },
