@@ -22,7 +22,6 @@ export const statusNames: Record<string, string> = {
 export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>([]),
     [queue, setQueue] = useState<any>({ runs: [], paused: false }),
-    [gpus, setGpus] = useState<any[]>([]),
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("run")||""),
     [log, setLog] = useState(""),
     [stop, setStop] = useState(""),
@@ -36,11 +35,11 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     const [r, q, g] = await Promise.all([
       api("/api/runs"),
       api("/api/queue"),
-      api("/api/gpus"),
+      Promise.resolve([]),
     ]);
     setRuns(items(r));
     setQueue(q);
-    setGpus(items(g));
+    void g;
   }
   useEffect(() => {
     refresh().catch((e) => notify(e.message));
@@ -51,26 +50,19 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
-    if (!selected) return;
     let alive = true;
     const load = () => {
+      const liveIds = runs.filter((run) => ["running", "starting", "stopping", "external_running"].includes(run.status)).map((run) => run.id);
+      api("/api/analysis/series", {
+        history_ids: [...liveIds, ...comparisons], metric, x_axis: "tokens",
+      }).then((x) => { if (alive) setSeries(x.series || []); }).catch(() => { if (alive) setSeries([]); });
+      if (!selected) return;
       api(`/api/runs/${selected}/log`)
         .then((x) => {
           if (alive) setLog(typeof x === "string" ? x : x.text || x.log || "");
         })
         .catch((e) => {
           if (alive) setLog(e.message);
-        });
-      api("/api/analysis/series", {
-        history_ids: [selected, ...comparisons],
-        metric,
-        x_axis: "tokens",
-      })
-        .then((x) => {
-          if (alive) setSeries(x.series || []);
-        })
-        .catch(() => {
-          if (alive) setSeries([]);
         });
     };
     load();
@@ -79,7 +71,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       alive = false;
       clearInterval(t);
     };
-  }, [selected, metric, comparisons]);
+  }, [selected, metric, comparisons, runs]);
   async function action(fn: () => Promise<unknown>) {
     try {
       await fn();
@@ -113,36 +105,15 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           刷新
         </button>
       </div>
-      <div className="gpu-grid">
-        {gpus.length ? (
-          gpus.map((g, i) => (
-            <section className="gpu-card" key={g.index ?? g.id ?? i}>
-              <div>
-                <span>GPU {g.index ?? g.id ?? i}</span>
-                <span className={`status ${g.available ? "completed" : ""}`}>
-                  {g.available ? "可分配" : g.name || "占用中"}
-                </span>
-              </div>
-              <strong>
-                {g.utilization ?? g.utilization_gpu ?? "—"}
-                <small>%</small>
-              </strong>
-              <div className="meter">
-                <i
-                  style={{
-                    width: `${g.utilization ?? g.utilization_gpu ?? 0}%`,
-                  }}
-                />
-              </div>
-              <small>
-                {g.memory_used ?? "—"} / {g.memory_total ?? "—"} MiB
-              </small>
-            </section>
-          ))
-        ) : (
-          <div className="panel muted">暂无 GPU 状态，连接后自动更新。</div>
-        )}
-      </div>
+      <section className="panel live-chart-panel">
+        <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
+        <div className="toolbar">
+          <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
+          <details><summary>历史对照（{comparisons.length}）</summary>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
+          <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>train_loss</option></datalist>
+        </div>
+        {series.length ? <ExperimentChart series={series} settings={settings} /> : <Empty>当前没有可绘制的 {metric} 数据</Empty>}
+      </section>
       <div className="monitor-grid">
         <section className="panel">
           <div className="panel-heading">
@@ -269,45 +240,6 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               )}
             </div>
           </div>
-          <div className="toolbar">
-            <label>
-              指标
-              <input
-                value={metric}
-                onChange={(e) => setMetric(e.target.value)}
-                list="monitor-metrics"
-              />
-              <datalist id="monitor-metrics">
-                <option>val_ppl</option>
-                <option>train_ppl</option>
-                <option>train_loss</option>
-              </datalist>
-            </label>
-            <details>
-              <summary>历史对照（{comparisons.length}）</summary>
-              {history.map((h) => (
-                <label className="check" key={h.id}>
-                  <input
-                    type="checkbox"
-                    checked={comparisons.includes(h.id)}
-                    onChange={(e) =>
-                      setComparisons(
-                        e.target.checked
-                          ? [...comparisons, h.id]
-                          : comparisons.filter((id) => id !== h.id),
-                      )
-                    }
-                  />
-                  {h.name || h.display_name}
-                </label>
-              ))}
-            </details>
-          </div>
-          {series.length ? (
-            <ExperimentChart series={series} settings={settings} />
-          ) : (
-            <Empty>尚无可绘制的 {metric} 记录</Empty>
-          )}
           <details open>
             <summary>实时日志</summary>
             <pre className="log">{log || "等待日志…"}</pre>
