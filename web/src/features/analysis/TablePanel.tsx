@@ -35,6 +35,7 @@ export function TablePanel({
     [fallback, setFallback] = useState(false),
     [difference, setDifference] = useState(false),
     [parameterChoice, setParameterChoice] = useState("");
+  const [templateLoaded, setTemplateLoaded] = useState(false);
   const parameterFields = [...new Set(history.flatMap((h) => Object.keys(h.parameters?.training || h.parameters || {})))];
   const [rowOrder, setRowOrder] = useState<string[]>(ids), [rowDrag, setRowDrag] = useState(0);
   const orderedIds = baseline
@@ -51,10 +52,20 @@ export function TablePanel({
         if (list[0]) {
           setTemplate(list[0].id);
           setColumns(list[0].columns);
+          setTemplateLoaded(true);
         }
       })
       .catch((e) => notify(e.message));
   }, []);
+  useEffect(() => {
+    if (!templateLoaded || !template) return;
+    const timer = window.setTimeout(() => {
+      const current = templates.find((t) => t.id === template);
+      if (!current) return;
+      api(`/api/templates/${template}`, { name: current.name, columns }, "PUT").catch(() => {});
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [template, templateLoaded, JSON.stringify(columns)]);
   const effective = columns.filter(
     (c) =>
       !difference ||
@@ -105,7 +116,8 @@ export function TablePanel({
     }
   }
   function update(id: string, change: Partial<Column>) {
-    setColumns((cs) => cs.map((c) => (c.id === id ? { ...c, ...change } : c)));
+    const normalized = typeof change.title === "string" ? { ...change, title: change.title.trim() } : change;
+    setColumns((cs) => cs.map((c) => (c.id === id ? { ...c, ...normalized } : c)));
   }
   function add(kind: string) {
     const field =
@@ -309,7 +321,7 @@ export function TablePanel({
             </div>
           ))}
           <div className="toolbar">
-            <select aria-label="选择超参数列" value={parameterChoice} onChange={(e) => { setParameterChoice(e.target.value); if (e.target.value) { addParameter(e.target.value); setParameterChoice(""); } }}>
+            <select aria-label="选择超参数列" value={parameterChoice} onChange={(e) => setParameterChoice(e.target.value)}>
               <option value="">选择超参数列</option>
               {parameterFields.map((field) => { const owner = history.find((h) => h.parameter_labels?.[field] || h.parameters?.parameter_labels?.[field]); return <option key={field} value={field}>{owner?.parameter_labels?.[field] || owner?.parameters?.parameter_labels?.[field] || field}</option>; })}
             </select>

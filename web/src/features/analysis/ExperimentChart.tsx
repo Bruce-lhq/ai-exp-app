@@ -22,17 +22,34 @@ export type ChartSettings = {
   yMax?: number;
 };
 export const palette = [
-  "#2861dc",
-  "#dc763b",
-  "#26a08c",
-  "#9367cb",
-  "#ce5b86",
-  "#6b8a32",
+  "#4C78A8",
+  "#F58518",
+  "#54A24B",
+  "#E45756",
+  "#72B7B2",
+  "#B279A2",
+  "#FF9DA6",
+  "#9D755D",
+  "#BAB0AC",
+  "#2F4B7C",
+  "#00A6A6",
+  "#D45087",
 ];
+function colorFor(series: Series, index: number, appearance: Record<string, { name?: string; color?: string }>) {
+  if (appearance[series.id]?.color) return appearance[series.id]!.color!;
+  const used = new Set<string>();
+  for (const item of Object.values(appearance)) if (item.color) used.add(item.color.toLowerCase());
+  for (let i = 0; i < palette.length; i++) {
+    const color = palette[(index + i) % palette.length];
+    if (!used.has(color.toLowerCase())) return color;
+  }
+  const hue = (index * 137.508) % 360;
+  return `hsl(${hue} 62% 45%)`;
+}
 export function chartConfiguration(
   series: Series[],
   settings: ChartSettings,
-  appearance: Record<string, { name?: string; color?: string }> = {},
+  appearance: Record<string, { name?: string; color?: string; order?: number }> = {},
 ) {
   return {
     type: "line" as const,
@@ -46,11 +63,11 @@ export function chartConfiguration(
             (settings.xScale !== "logarithmic" || p.x > 0) &&
             (settings.yScale !== "logarithmic" || p.y > 0),
         ),
-        borderColor: appearance[s.id]?.color || palette[i % palette.length],
-        backgroundColor: appearance[s.id]?.color || palette[i % palette.length],
-        borderWidth: 2,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        borderColor: colorFor(s, i, appearance),
+        backgroundColor: colorFor(s, i, appearance),
+        borderWidth: 2.6,
+        pointRadius: 3.5,
+        pointHoverRadius: 5,
         tension: 0,
       })),
     },
@@ -64,10 +81,12 @@ export function chartConfiguration(
         title: {
           display: !!settings.title,
           text: settings.title,
-          font: { size: 16 },
+          align: "start" as const,
+          font: { size: 20, weight: "bold" as const },
         },
         legend: {
-          position: "bottom" as const,
+          position: "top" as const,
+          align: "end" as const,
           labels: { usePointStyle: true, boxWidth: 7, padding: 24 },
         },
       },
@@ -77,14 +96,14 @@ export function chartConfiguration(
           title: { display: true, text: settings.xLabel || settings.xAxis },
           min: settings.xMin,
           max: settings.xMax,
-          grid: { color: "#eef1f5" },
+          grid: { color: "#D7E0EA" },
         },
         y: {
           type: settings.yScale,
           title: { display: true, text: settings.yLabel || settings.metric },
           min: settings.yMin,
           max: settings.yMax,
-          grid: { color: "#eef1f5" },
+          grid: { color: "#D7E0EA" },
         },
       },
     },
@@ -97,6 +116,34 @@ export function chartConfiguration(
           ctx.globalCompositeOperation = "destination-over";
           ctx.fillStyle = "white";
           ctx.fillRect(0, 0, chart.width, chart.height);
+          ctx.restore();
+        },
+      },
+      {
+        id: "endpoint-labels",
+        afterDatasetsDraw(chart: any) {
+          const { ctx, chartArea } = chart;
+          ctx.save();
+          ctx.font = "12px DejaVu Sans, sans-serif";
+          ctx.textBaseline = "middle";
+          chart.data.datasets.forEach((dataset: any, index: number) => {
+            const meta = chart.getDatasetMeta(index);
+            const points = meta.data || [];
+            const point = points[points.length - 1];
+            if (!point || !dataset.data?.length) return;
+            const pos = point.getProps(["x", "y"], true);
+            const value = dataset.data[dataset.data.length - 1]?.y;
+            if (!Number.isFinite(pos.x) || !Number.isFinite(pos.y) || !Number.isFinite(value)) return;
+            const x = Math.min(pos.x + 14, chartArea.right - 48);
+            ctx.strokeStyle = dataset.borderColor;
+            ctx.fillStyle = dataset.borderColor;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(pos.x, pos.y);
+            ctx.lineTo(x, pos.y);
+            ctx.stroke();
+            ctx.fillText(Number(value).toPrecision(4), x + 3, pos.y);
+          });
           ctx.restore();
         },
       },
