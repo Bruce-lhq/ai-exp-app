@@ -17,7 +17,10 @@ class RemoteError(RuntimeError):
 def build_ssh_argv(ssh_path, alias, agent_path):
     if not alias or alias.startswith('-') or any(c.isspace() for c in alias):
         raise ValueError('invalid SSH alias')
-    return [ssh_path, alias, '-o', 'ControlMaster=no', '-o', 'ControlPath=none', '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=5',
+    # Keep the user's ~/.ssh/config connection reuse.  In particular, the
+    # gpu alias uses ControlMaster auto + ControlPersist, so a terminal login
+    # is reused by the workbench instead of opening a fresh password session.
+    return [ssh_path, alias, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=5',
             '-o', 'ServerAliveCountMax=2', 'python3 ' + shlex.quote(agent_path) + ' rpc']
 
 

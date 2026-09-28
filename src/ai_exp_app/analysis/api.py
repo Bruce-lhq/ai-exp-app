@@ -1,5 +1,6 @@
 import uuid
 import json
+import time
 from ai_exp_app.projects.api import remote
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -7,6 +8,8 @@ from .metrics import read_metrics
 from .tables import render_table
 from .templates import ensure_default, normalize_columns
 from ai_exp_app.history.importer import enrich
+
+_external_cache = {}
 
 
 def create_router(store):
@@ -26,6 +29,9 @@ def create_router(store):
         run = store.get('runs', identity)
         if not run or not run.get('external'):
             return None
+        cached = _external_cache.get(identity)
+        if cached and time.monotonic() - cached[0] < 4:
+            return cached[1]
         value = remote(run.get('ssh_alias', 'gpu'), 'read_file', {'path': run['remote_path'], 'name': 'metrics.jsonl'})
         records, metadata = [], {}
         for index, line in enumerate(str(value.get('content', '')).splitlines()):
@@ -44,7 +50,9 @@ def create_router(store):
                 elif key == 'loss' and event in {'validation','eval','evaluation','val'}: metric = 'val_loss'
                 records.append({'metric': metric, 'value': raw, 'tokens': tokens, 'step': step, 'elapsed_s': elapsed})
                 metadata[metric] = {'name': metric}
-        return {'name': run.get('display_name', identity), 'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
+        result = {'name': run.get('display_name', identity), 'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
+        _external_cache[identity] = (time.monotonic(), result)
+        return result
 
     @router.get('/api/history/{identity}/metrics')
     def metrics(identity: str):
