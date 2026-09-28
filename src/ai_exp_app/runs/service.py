@@ -54,8 +54,8 @@ class RunService:
             # outside the platform queue and cannot be stopped from this UI.
             external = remote(self.alias(), "external_status", {"ssh_alias": self.alias()}).get("runs", [])
             for run in external:
-                if not self.store.get("runs", run["id"]):
-                    self.store.put("runs", run["id"], run)
+                existing = self.store.get("runs", run["id"]) or {}
+                self.store.put("runs", run["id"], {**existing, **run})
             for event in result.get("events", []):
                 apply_started_event(self.store, event)
                 if event.get("kind") == "failed":
