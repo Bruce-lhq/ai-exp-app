@@ -34,6 +34,13 @@ export function TablePanel({
     [drag, setDrag] = useState(0),
     [fallback, setFallback] = useState(false),
     [difference, setDifference] = useState(false);
+  const [rowOrder, setRowOrder] = useState<string[]>(ids), [rowDrag, setRowDrag] = useState(0);
+  const orderedIds = baseline
+    ? [baseline, ...rowOrder.filter((id) => id !== baseline)]
+    : rowOrder;
+  useEffect(() => {
+    setRowOrder(ids);
+  }, [JSON.stringify(ids)]);
   useEffect(() => {
     api("/api/templates")
       .then((x) => {
@@ -65,7 +72,7 @@ export function TablePanel({
     let alive = true;
     if (!columns.length) return;
     api("/api/analysis/table", {
-      history_ids: ids,
+      history_ids: orderedIds,
       baseline_id: baseline || null,
       columns: effective,
     })
@@ -76,7 +83,7 @@ export function TablePanel({
     return () => {
       alive = false;
     };
-  }, [JSON.stringify(ids), baseline, JSON.stringify(effective)]);
+  }, [JSON.stringify(orderedIds), baseline, JSON.stringify(effective)]);
   async function save(asNew: boolean) {
     try {
       const name = asNew
@@ -200,7 +207,10 @@ export function TablePanel({
           Baseline
           <select
             value={baseline}
-            onChange={(e) => setBaseline(e.target.value)}
+            onChange={(e) => {
+              setBaseline(e.target.value);
+              if (e.target.value) setRowOrder((current) => [e.target.value, ...current.filter((id) => id !== e.target.value)]);
+            }}
           >
             <option value="">未选择</option>
             {history.map((h) => (
@@ -317,6 +327,7 @@ export function TablePanel({
         <table>
           <thead>
             <tr>
+              <th aria-label="拖动排序" />
               {result.headers?.map((h: string, i: number) => (
                 <th key={i}>{h}</th>
               ))}
@@ -324,7 +335,8 @@ export function TablePanel({
           </thead>
           <tbody>
             {result.rows?.map((row: any[], i: number) => (
-              <tr key={i}>
+              <tr key={orderedIds[i] || i} draggable onDragStart={() => setRowDrag(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => setRowOrder(move(orderedIds, rowDrag, i))}>
+                <td className="drag-cell"><GripVertical size={14} /></td>
                 {row.map((cell: any, j: number) => (
                   <td key={j}>{cell ?? "—"}</td>
                 ))}
