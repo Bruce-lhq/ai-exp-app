@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Download, SlidersHorizontal } from "lucide-react";
+import { Download, GripVertical, SlidersHorizontal } from "lucide-react";
 import { api, items } from "../../app/api";
 import { Empty } from "../../app/ui";
 import {
@@ -32,6 +32,9 @@ function initialSettings(): ChartSettings {
   }
   return { ...initial, ...saved };
 }
+function initialAppearance(): Record<string, { name?: string; color?: string; order?: number }> {
+  try { return JSON.parse(localStorage.getItem("analysis.appearance") || "{}"); } catch { return {}; }
+}
 export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   const [history, setHistory] = useState<any[]>([]),
     [ids, setIds] = useState<string[]>(() =>
@@ -42,9 +45,11 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     [warnings, setWarnings] = useState<string[]>([]),
     [metrics, setMetrics] = useState(["val_ppl"]),
     [advanced, setAdvanced] = useState(false),
-    [appearance, setAppearance] = useState<
-      Record<string, { name?: string; color?: string }>
-    >({});
+    [appearance, setAppearance] = useState(initialAppearance),
+    [appearanceDrag, setAppearanceDrag] = useState("");
+  useEffect(() => {
+    localStorage.setItem("analysis.appearance", JSON.stringify(appearance));
+  }, [appearance]);
   useEffect(() => {
     api("/api/history")
       .then((x) => setHistory(items(x).filter((h) => h.visibility !== "archived")))
@@ -97,6 +102,9 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
         (settings.xScale === "logarithmic" && p.x <= 0) ||
         (settings.yScale === "logarithmic" && p.y <= 0),
     ),
+  );
+  const orderedSeries = [...series].sort((a, b) =>
+    (appearance[a.id]?.order ?? series.indexOf(a)) - (appearance[b.id]?.order ?? series.indexOf(b)),
   );
   return (
     <>
@@ -254,18 +262,25 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
                 </label>
               ))}
             </div>
-            {series.map((s, i) => (
-              <div key={s.id}>
+            {orderedSeries.map((s, i) => (
+              <div key={s.id} draggable onDragStart={() => setAppearanceDrag(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
+                const from = orderedSeries.findIndex((x) => x.id === appearanceDrag);
+                if (from < 0 || from === i) return;
+                const next = [...orderedSeries];
+                const [item] = next.splice(from, 1);
+                next.splice(i, 0, item);
+                setAppearance((current) => Object.fromEntries(next.map((x, index) => [x.id, { ...current[x.id], order: index }])));
+              }}>
+                <GripVertical size={14} />
                 <input
                   aria-label={`${s.name} 颜色`}
                   type="color"
                   value={appearance[s.id]?.color || palette[i % palette.length]}
-                  onChange={(e) =>
-                    setAppearance((a) => ({
-                      ...a,
-                      [s.id]: { ...a[s.id], color: e.target.value },
-                    }))
-                  }
+                  onChange={(e) => {
+                    const duplicate = Object.entries(appearance).some(([id, value]) => id !== s.id && value.color?.toLowerCase() === e.target.value.toLowerCase());
+                    if (duplicate) { notify("每条曲线需要使用不同颜色"); return; }
+                    setAppearance((a) => ({ ...a, [s.id]: { ...a[s.id], color: e.target.value } }));
+                  }}
                 />
                 <label>
                   图例
@@ -274,7 +289,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
                     onChange={(e) =>
                       setAppearance((a) => ({
                         ...a,
-                        [s.id]: { ...a[s.id], name: e.target.value },
+                        [s.id]: { ...a[s.id], name: e.target.value.trim() },
                       }))
                     }
                   />
@@ -295,7 +310,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
         )}
         {series.some((s) => s.points.length) ? (
           <ExperimentChart
-            series={series}
+            series={orderedSeries}
             settings={settings}
             appearance={appearance}
           />

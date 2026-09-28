@@ -5,6 +5,7 @@ import { Empty, Modal } from "../../app/ui";
 import { move } from "../parameters/values";
 import {
   ExperimentChart,
+  palette,
   type Series,
   type ChartSettings,
 } from "../analysis/ExperimentChart";
@@ -28,7 +29,12 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [pauseAlso, setPauseAlso] = useState(false),
     [drag, setDrag] = useState(0),
     [series, setSeries] = useState<Series[]>([]),
-    [metric, setMetric] = useState("val_ppl");
+    [metric, setMetric] = useState("val_ppl"),
+    [title, setTitle] = useState(() => localStorage.getItem("monitor.title") || ""),
+    [appearance, setAppearance] = useState<Record<string, { name?: string; color?: string; order?: number }>>(() => {
+      try { return JSON.parse(localStorage.getItem("monitor.appearance") || "{}"); } catch { return {}; }
+    }),
+    [appearanceDrag, setAppearanceDrag] = useState("");
   const [history, setHistory] = useState<any[]>([]),
     [comparisons, setComparisons] = useState<string[]>([]);
   async function refresh() {
@@ -41,6 +47,10 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     setQueue(q);
     void g;
   }
+  useEffect(() => {
+    localStorage.setItem("monitor.title", title);
+    localStorage.setItem("monitor.appearance", JSON.stringify(appearance));
+  }, [title, appearance]);
   useEffect(() => {
     refresh().catch((e) => notify(e.message));
     api("/api/history")
@@ -83,7 +93,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   const settings: ChartSettings = {
     metric,
     xAxis: "tokens",
-    title: "",
+    title,
     xLabel: "训练 tokens",
     yLabel: metric,
     xScale: "linear",
@@ -92,6 +102,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     height: 600,
     pixelRatio: 2,
   };
+  const orderedSeries = [...series].sort((a, b) =>
+    (appearance[a.id]?.order ?? series.indexOf(a)) - (appearance[b.id]?.order ?? series.indexOf(b)),
+  );
   return (
     <>
       <div className="page-heading">
@@ -109,10 +122,19 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
         <div className="toolbar">
           <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
+          <label>图标题 <input value={title} onChange={(e) => setTitle(e.target.value.trim())} /></label>
           <details><summary>历史对照（{comparisons.length}）</summary><button className="subtle" onClick={() => setComparisons(comparisons.length === history.length ? [] : history.map((h) => h.id))}>{comparisons.length === history.length ? "取消全选" : "全选"}</button>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
           <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>train_loss</option></datalist>
         </div>
-        {series.length ? <ExperimentChart series={series} settings={settings} /> : <Empty>当前没有可绘制的 {metric} 数据</Empty>}
+        {series.length ? <ExperimentChart series={orderedSeries} settings={settings} appearance={appearance} /> : <Empty>当前没有可绘制的 {metric} 数据</Empty>}
+        {!!series.length && <details className="chart-appearance"><summary>编辑图例、顺序与配色</summary>{orderedSeries.map((s, i) => <div key={s.id} className="row" draggable onDragStart={() => setAppearanceDrag(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
+          const from = orderedSeries.findIndex((x) => x.id === appearanceDrag); if (from < 0 || from === i) return;
+          const next = [...orderedSeries]; const [item] = next.splice(from, 1); next.splice(i, 0, item);
+          setAppearance(Object.fromEntries(next.map((x, index) => [x.id, { ...appearance[x.id], order: index }])));
+        }}><GripVertical size={14} /><input type="color" value={appearance[s.id]?.color || palette[i % palette.length]} onChange={(e) => {
+          if (Object.entries(appearance).some(([id, value]) => id !== s.id && value.color?.toLowerCase() === e.target.value.toLowerCase())) { notify("每条曲线需要使用不同颜色"); return; }
+          setAppearance((a) => ({ ...a, [s.id]: { ...a[s.id], color: e.target.value } }));
+        }} /><input aria-label={`${s.name} 图例`} value={appearance[s.id]?.name ?? s.name} onChange={(e) => setAppearance((a) => ({ ...a, [s.id]: { ...a[s.id], name: e.target.value.trim() } }))} /></div>)}</details>}
       </section>
       <div className="monitor-grid">
         <section className="panel">
