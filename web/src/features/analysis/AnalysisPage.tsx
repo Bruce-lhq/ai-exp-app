@@ -14,13 +14,15 @@ const initial: ChartSettings = {
   metric: "val_ppl",
   xAxis: "tokens",
   title: "验证集困惑度",
-  xLabel: "训练 tokens",
+  xLabel: "Trained tokens (B)",
   yLabel: "val_ppl",
   xScale: "linear",
   yScale: "logarithmic",
-  width: 1600,
-  height: 900,
-  pixelRatio: 2,
+  width: 1536,
+  height: 1032,
+  pixelRatio: 1.5,
+  xMin: 0,
+  xMax: 10.75,
 };
 function initialSettings(): ChartSettings {
   const raw = localStorage.getItem("analysis.settings") || "{}";
@@ -29,6 +31,15 @@ function initialSettings(): ChartSettings {
   if (localStorage.getItem("analysis.settings.v2") !== "1") {
     localStorage.setItem("analysis.settings.v2", "1");
     saved.yScale = "logarithmic";
+  }
+  if (localStorage.getItem("analysis.settings.v3") !== "1") {
+    localStorage.setItem("analysis.settings.v3", "1");
+    saved.xLabel = initial.xLabel;
+    saved.width = initial.width;
+    saved.height = initial.height;
+    saved.pixelRatio = initial.pixelRatio;
+    saved.xMin = initial.xMin;
+    saved.xMax = initial.xMax;
   }
   return { ...initial, ...saved };
 }
@@ -169,10 +180,13 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
                 change({
                   xAxis: e.target.value,
                   xLabel: {
-                    tokens: "训练 tokens",
+                    tokens: "Trained tokens (B)",
                     step: "训练 step",
                     elapsed_s: "有效训练耗时 (s)",
                   }[e.target.value],
+                  ...(e.target.value === "tokens"
+                    ? { xMin: 0, xMax: 10.75 }
+                    : { xMin: undefined, xMax: undefined }),
                 })
               }
             >
