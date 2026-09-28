@@ -1,0 +1,13 @@
+.venv/
+.local/
+gpu_downloads/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+dist/
+.DS_Store

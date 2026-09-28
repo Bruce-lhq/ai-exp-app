@@ -1,0 +1,319 @@
+import { useEffect, useState } from "react";
+import { Download, SlidersHorizontal } from "lucide-react";
+import { api, items } from "../../app/api";
+import { Empty } from "../../app/ui";
+import {
+  ExperimentChart,
+  downloadPng,
+  palette,
+  type ChartSettings,
+  type Series,
+} from "./ExperimentChart";
+import { TablePanel } from "./TablePanel";
+const initial: ChartSettings = {
+  metric: "val_ppl",
+  xAxis: "tokens",
+  title: "验证集困惑度",
+  xLabel: "训练 tokens",
+  yLabel: "val_ppl",
+  xScale: "linear",
+  yScale: "linear",
+  width: 1600,
+  height: 900,
+  pixelRatio: 2,
+};
+export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
+  const [history, setHistory] = useState<any[]>([]),
+    [ids, setIds] = useState<string[]>(() =>
+      JSON.parse(localStorage.getItem("analysis.ids") || "[]"),
+    ),
+    [settings, setSettings] = useState<ChartSettings>(() => ({
+      ...initial,
+      ...JSON.parse(localStorage.getItem("analysis.settings") || "{}"),
+    })),
+    [series, setSeries] = useState<Series[]>([]),
+    [warnings, setWarnings] = useState<string[]>([]),
+    [metrics, setMetrics] = useState(["val_ppl"]),
+    [advanced, setAdvanced] = useState(false),
+    [appearance, setAppearance] = useState<
+      Record<string, { name?: string; color?: string }>
+    >({});
+  useEffect(() => {
+    api("/api/history")
+      .then((x) => setHistory(items(x).filter((h) => h.visibility !== "archived")))
+      .catch((e) => notify(e.message));
+  }, []);
+  useEffect(() => {
+    localStorage.setItem("analysis.ids", JSON.stringify(ids));
+    localStorage.setItem("analysis.settings", JSON.stringify(settings));
+    let alive = true;
+    api("/api/analysis/series", {
+      history_ids: ids,
+      metric: settings.metric,
+      x_axis: settings.xAxis,
+    })
+      .then((x) => {
+        if (alive) {
+          setSeries(x.series || []);
+          setWarnings((x.warnings || []).map((w: any) => w.message || w));
+        }
+      })
+      .catch((e) => {
+        if (alive) {
+          setSeries([]);
+          setWarnings([e.message]);
+        }
+      });
+    return () => {
+      alive = false;
+    };
+  }, [JSON.stringify(ids), JSON.stringify(settings)]);
+  useEffect(() => {
+    Promise.all(
+      ids.map((id) =>
+        api(`/api/history/${id}/metrics`).catch(() => ({ metadata: {} })),
+      ),
+    ).then((all) =>
+      setMetrics([
+        ...new Set([
+          "val_ppl",
+          ...all.flatMap((d) => Object.keys(d.metadata || {})),
+        ]),
+      ]),
+    );
+  }, [JSON.stringify(ids)]);
+  const change = (p: Partial<ChartSettings>) =>
+    setSettings((s) => ({ ...s, ...p }));
+  const nonpositive = series.some((s) =>
+    s.points.some(
+      (p) =>
+        (settings.xScale === "logarithmic" && p.x <= 0) ||
+        (settings.yScale === "logarithmic" && p.y <= 0),
+    ),
+  );
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">COMPARE & EXPORT</span>
+          <h1>画图与列表</h1>
+          <p>选择实验，比较结果。满意后下载 PNG 或导出 Markdown。</p>
+        </div>
+        <details className="history-picker">
+          <summary>
+            选择历史实验 <span className="count">{ids.length}</span>
+          </summary>
+          <div>
+            {!history.length ? (
+              <p className="muted">先到历史管理导入实验。</p>
+            ) : (
+              history.map((h) => (
+                <label className="check" key={h.id}>
+                  <input
+                    type="checkbox"
+                    checked={ids.includes(h.id)}
+                    onChange={(e) =>
+                      setIds(
+                        e.target.checked
+                          ? [...ids, h.id]
+                          : ids.filter((id) => id !== h.id),
+                      )
+                    }
+                  />
+                  {h.name || h.display_name}
+                </label>
+              ))
+            )}
+          </div>
+        </details>
+      </div>
+      <section className="panel">
+        <div className="panel-heading">
+          <h3>曲线对比</h3>
+          <button
+            className="primary"
+            disabled={!series.some((s) => s.points.length)}
+            onClick={() => downloadPng(series, settings, appearance)}
+          >
+            <Download size={15} />
+            下载 PNG
+          </button>
+        </div>
+        <div className="toolbar">
+          <label>
+            指标
+            <select
+              value={settings.metric}
+              onChange={(e) =>
+                change({ metric: e.target.value, yLabel: e.target.value })
+              }
+            >
+              {metrics.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            横轴
+            <select
+              value={settings.xAxis}
+              onChange={(e) =>
+                change({
+                  xAxis: e.target.value,
+                  xLabel: {
+                    tokens: "训练 tokens",
+                    step: "训练 step",
+                    elapsed_s: "有效训练耗时 (s)",
+                  }[e.target.value],
+                })
+              }
+            >
+              <option value="tokens">训练 tokens</option>
+              <option value="step">step</option>
+              <option value="elapsed_s">实际训练耗时</option>
+            </select>
+          </label>
+          <label>
+            图标题
+            <input
+              value={settings.title}
+              onChange={(e) => change({ title: e.target.value })}
+            />
+          </label>
+          <button onClick={() => setAdvanced(!advanced)}>
+            <SlidersHorizontal size={15} />
+            图表设置
+          </button>
+        </div>
+        {advanced && (
+          <div className="chart-controls">
+            {(["x", "y"] as const).map((axis) => (
+              <div key={axis}>
+                <label>
+                  {axis.toUpperCase()} 轴标题
+                  <input
+                    value={settings[`${axis}Label`]}
+                    onChange={(e) =>
+                      change({ [`${axis}Label`]: e.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  刻度
+                  <select
+                    value={settings[`${axis}Scale`]}
+                    onChange={(e) =>
+                      change({ [`${axis}Scale`]: e.target.value })
+                    }
+                  >
+                    <option value="linear">线性</option>
+                    <option value="logarithmic">对数</option>
+                  </select>
+                </label>
+                {(["Min", "Max"] as const).map((bound) => (
+                  <label key={bound}>
+                    {bound === "Min" ? "下限" : "上限"}
+                    <input
+                      type="number"
+                      placeholder="自动"
+                      value={settings[`${axis}${bound}`] ?? ""}
+                      onChange={(e) =>
+                        change({
+                          [`${axis}${bound}`]:
+                            e.target.value === ""
+                              ? undefined
+                              : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+            <div>
+              {(["width", "height", "pixelRatio"] as const).map((key) => (
+                <label key={key}>
+                  {
+                    {
+                      width: "导出宽度",
+                      height: "导出高度",
+                      pixelRatio: "清晰度倍率",
+                    }[key]
+                  }
+                  <input
+                    type="number"
+                    min="1"
+                    max={key === "pixelRatio" ? 4 : 6000}
+                    value={settings[key]}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (n > 0 && n <= (key === "pixelRatio" ? 4 : 6000))
+                        change({ [key]: n });
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+            {series.map((s, i) => (
+              <div key={s.id}>
+                <input
+                  aria-label={`${s.name} 颜色`}
+                  type="color"
+                  value={appearance[s.id]?.color || palette[i % palette.length]}
+                  onChange={(e) =>
+                    setAppearance((a) => ({
+                      ...a,
+                      [s.id]: { ...a[s.id], color: e.target.value },
+                    }))
+                  }
+                />
+                <label>
+                  图例
+                  <input
+                    value={appearance[s.id]?.name ?? s.name}
+                    onChange={(e) =>
+                      setAppearance((a) => ({
+                        ...a,
+                        [s.id]: { ...a[s.id], name: e.target.value },
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+        {warnings.map((w, i) => (
+          <p className="warning" key={i}>
+            {w}
+          </p>
+        ))}
+        {nonpositive && (
+          <p className="warning">
+            对数坐标无法显示非正数点；已跳过这些点，实验选择保持不变。
+          </p>
+        )}
+        {series.some((s) => s.points.length) ? (
+          <ExperimentChart
+            series={series}
+            settings={settings}
+            appearance={appearance}
+          />
+        ) : (
+          <Empty>
+            <div className="empty-plot">
+              <i />
+              <i />
+              <i />
+            </div>
+            <h3>
+              {ids.length ? "所选指标暂无可绘制数据" : "选择实验，开始对比"}
+            </h3>
+            <p>缺少指标的实验会暂时跳过，切换指标后仍保留勾选。</p>
+          </Empty>
+        )}
+      </section>
+      <TablePanel ids={ids} history={history} notify={notify} />
+    </>
+  );
+}
