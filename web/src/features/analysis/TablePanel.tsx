@@ -33,7 +33,9 @@ export function TablePanel({
     [edit, setEdit] = useState(false),
     [drag, setDrag] = useState(0),
     [fallback, setFallback] = useState(false),
-    [difference, setDifference] = useState(false);
+    [difference, setDifference] = useState(false),
+    [parameterChoice, setParameterChoice] = useState("");
+  const parameterFields = [...new Set(history.flatMap((h) => Object.keys(h.parameters?.training || h.parameters || {})))];
   const [rowOrder, setRowOrder] = useState<string[]>(ids), [rowDrag, setRowDrag] = useState(0);
   const orderedIds = baseline
     ? [baseline, ...rowOrder.filter((id) => id !== baseline)]
@@ -109,9 +111,7 @@ export function TablePanel({
     const field =
       kind === "metric"
         ? prompt("指标原始名称", "val_ppl")
-        : kind === "parameter"
-          ? prompt("超参数原始名称")
-          : null;
+        : null;
     if ((kind === "metric" || kind === "parameter") && !field) return;
     const id = crypto.randomUUID();
     const c: Column = {
@@ -142,6 +142,11 @@ export function TablePanel({
           ]
         : []),
     ]);
+  }
+  function addParameter(field: string) {
+    const owner = history.find((h) => h.parameter_labels?.[field] || h.parameters?.parameter_labels?.[field]);
+    const title = owner?.parameter_labels?.[field] || owner?.parameters?.parameter_labels?.[field] || field;
+    setColumns((cs) => [...cs, { id: crypto.randomUUID(), kind: "parameter", field, title }]);
   }
   return (
     <section className="panel table-panel">
@@ -304,9 +309,13 @@ export function TablePanel({
             </div>
           ))}
           <div className="toolbar">
-            <button onClick={() => add("parameter")}>
+            <select aria-label="选择超参数列" value={parameterChoice} onChange={(e) => { setParameterChoice(e.target.value); if (e.target.value) { addParameter(e.target.value); setParameterChoice(""); } }}>
+              <option value="">选择超参数列</option>
+              {parameterFields.map((field) => { const owner = history.find((h) => h.parameter_labels?.[field] || h.parameters?.parameter_labels?.[field]); return <option key={field} value={field}>{owner?.parameter_labels?.[field] || owner?.parameters?.parameter_labels?.[field] || field}</option>; })}
+            </select>
+            <button disabled={!parameterFields.length} onClick={() => parameterChoice && addParameter(parameterChoice)}>
               <Plus size={14} />
-              超参数列
+              增加超参数列
             </button>
             <button onClick={() => add("metric")}>指标与差值</button>
             <button onClick={() => add("notes")}>备注列</button>
