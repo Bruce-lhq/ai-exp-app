@@ -23,17 +23,14 @@ export type ChartSettings = {
 };
 export const palette = [
   "#4C78A8",
+  "#2ca02c",
+  "#D45B5B",
   "#F58518",
-  "#54A24B",
-  "#E45756",
-  "#72B7B2",
-  "#B279A2",
-  "#FF9DA6",
-  "#9D755D",
-  "#BAB0AC",
-  "#2F4B7C",
-  "#00A6A6",
-  "#D45087",
+  "#17BECF",
+  "#E377C2",
+  "#9467bd",
+  "#8C564B",
+  "#FF9DA7",
 ];
 function colorFor(series: Series, index: number, appearance: Record<string, { name?: string; color?: string }>) {
   if (appearance[series.id]?.color) return appearance[series.id]!.color!;
@@ -51,6 +48,7 @@ export function chartConfiguration(
   settings: ChartSettings,
   appearance: Record<string, { name?: string; color?: string; order?: number }> = {},
 ) {
+  const fontFamily = '"Hiragino Sans GB", "DejaVu Sans", sans-serif';
   return {
     type: "line" as const,
     data: {
@@ -62,7 +60,10 @@ export function chartConfiguration(
             Number.isFinite(p.y) &&
             (settings.xScale !== "logarithmic" || p.x > 0) &&
             (settings.yScale !== "logarithmic" || p.y > 0),
-        ),
+        ).map((p) => ({
+          x: settings.xAxis === "tokens" ? p.x / 1_000_000_000 : p.x,
+          y: p.y,
+        })),
         borderColor: colorFor(s, i, appearance),
         backgroundColor: colorFor(s, i, appearance),
         borderWidth: 2.6,
@@ -82,28 +83,30 @@ export function chartConfiguration(
           display: !!settings.title,
           text: settings.title,
           align: "start" as const,
-          font: { size: 20, weight: "bold" as const },
+          font: { family: fontFamily, size: 20, weight: "bold" as const },
         },
         legend: {
           position: "top" as const,
           align: "end" as const,
-          labels: { usePointStyle: true, boxWidth: 7, padding: 24 },
+          labels: { usePointStyle: true, boxWidth: 7, padding: 24, font: { family: fontFamily, size: 13 } },
         },
       },
       scales: {
         x: {
           type: settings.xScale,
-          title: { display: true, text: settings.xLabel || settings.xAxis },
+          title: { display: true, text: settings.xLabel || settings.xAxis, font: { family: fontFamily, size: 15 } },
           min: settings.xMin,
           max: settings.xMax,
-          grid: { color: "#D7E0EA" },
+          ticks: { font: { family: fontFamily, size: 13 } },
+          grid: { color: "#D7E0EA", lineWidth: 1 },
         },
         y: {
           type: settings.yScale,
-          title: { display: true, text: settings.yLabel || settings.metric },
+          title: { display: true, text: settings.yLabel || settings.metric, font: { family: fontFamily, size: 15 } },
           min: settings.yMin,
           max: settings.yMax,
-          grid: { color: "#D7E0EA" },
+          ticks: { font: { family: fontFamily, size: 13 } },
+          grid: { color: "#D7E0EA", lineWidth: 1 },
         },
       },
     },
@@ -124,7 +127,7 @@ export function chartConfiguration(
         afterDatasetsDraw(chart: any) {
           const { ctx, chartArea } = chart;
           ctx.save();
-          ctx.font = "12px DejaVu Sans, sans-serif";
+          ctx.font = `bold 12px ${fontFamily}`;
           ctx.textBaseline = "middle";
           chart.data.datasets.forEach((dataset: any, index: number) => {
             const meta = chart.getDatasetMeta(index);
