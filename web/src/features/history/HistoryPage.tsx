@@ -101,6 +101,9 @@ export function HistoryPage({
               导出所选 ({selected.length})
             </button>
           )}
+          <button onClick={() => setSelected(selected.length === shown.length ? [] : shown.map((h) => h.id))}>
+            {selected.length === shown.length && shown.length ? "取消全选" : "全选历史"}
+          </button>
         </div>
         {!shown.length ? (
           <Empty>

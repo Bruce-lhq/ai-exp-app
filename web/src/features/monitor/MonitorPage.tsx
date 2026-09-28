@@ -109,7 +109,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
         <div className="toolbar">
           <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
-          <details><summary>历史对照（{comparisons.length}）</summary>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
+          <details><summary>历史对照（{comparisons.length}）</summary><button className="subtle" onClick={() => setComparisons(comparisons.length === history.length ? [] : history.map((h) => h.id))}>{comparisons.length === history.length ? "取消全选" : "全选"}</button>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
           <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>train_loss</option></datalist>
         </div>
         {series.length ? <ExperimentChart series={series} settings={settings} /> : <Empty>当前没有可绘制的 {metric} 数据</Empty>}
