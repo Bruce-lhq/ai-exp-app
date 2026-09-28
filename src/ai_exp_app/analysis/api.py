@@ -1,4 +1,6 @@
 import uuid
+import json
+from ai_exp_app.projects.api import remote
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from .metrics import read_metrics
@@ -20,6 +22,30 @@ def create_router(store):
         record.update(metrics)
         return record
 
+    def load_external(identity):
+        run = store.get('runs', identity)
+        if not run or not run.get('external'):
+            return None
+        value = remote(run.get('ssh_alias', 'gpu'), 'read_file', {'path': run['remote_path'], 'name': 'metrics.jsonl'})
+        records, metadata = [], {}
+        for index, line in enumerate(str(value.get('content', '')).splitlines()):
+            try: item = json.loads(line)
+            except ValueError: continue
+            if not isinstance(item, dict): continue
+            event = str(item.get('event', '')).lower()
+            tokens = item.get('tokens_seen')
+            step = item.get('optimizer_step', item.get('step'))
+            elapsed = item.get('elapsed_s')
+            for key, raw in item.items():
+                if key in {'tokens_seen','optimizer_step','step','elapsed_s'} or not isinstance(raw, (int,float)) or isinstance(raw,bool): continue
+                metric = key
+                if key in {'perplexity','ppl'}: metric = ('val_' if event in {'validation','eval','evaluation','val'} else 'train_') + 'ppl'
+                elif key == 'loss' and event in {'train','training'}: metric = 'train_loss'
+                elif key == 'loss' and event in {'validation','eval','evaluation','val'}: metric = 'val_loss'
+                records.append({'metric': metric, 'value': raw, 'tokens': tokens, 'step': step, 'elapsed_s': elapsed})
+                metadata[metric] = {'name': metric}
+        return {'name': run.get('display_name', identity), 'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
+
     @router.get('/api/history/{identity}/metrics')
     def metrics(identity: str):
         record = load(identity)
@@ -33,7 +59,7 @@ def create_router(store):
         result, warnings = [], []
         for identity in body.get('history_ids', []):
             try:
-                record = load(identity)
+                record = load_external(identity) if (store.get('runs', identity) or {}).get('external') else load(identity)
             except HTTPException as exc:
                 warnings.append(str(exc.detail))
                 continue
