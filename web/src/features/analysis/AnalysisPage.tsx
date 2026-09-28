@@ -22,15 +22,22 @@ const initial: ChartSettings = {
   height: 900,
   pixelRatio: 2,
 };
+function initialSettings(): ChartSettings {
+  const raw = localStorage.getItem("analysis.settings") || "{}";
+  let saved: Partial<ChartSettings> = {};
+  try { saved = JSON.parse(raw); } catch { saved = {}; }
+  if (localStorage.getItem("analysis.settings.v2") !== "1") {
+    localStorage.setItem("analysis.settings.v2", "1");
+    saved.yScale = "logarithmic";
+  }
+  return { ...initial, ...saved };
+}
 export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   const [history, setHistory] = useState<any[]>([]),
     [ids, setIds] = useState<string[]>(() =>
       JSON.parse(localStorage.getItem("analysis.ids") || "[]"),
     ),
-    [settings, setSettings] = useState<ChartSettings>(() => ({
-      ...initial,
-      ...JSON.parse(localStorage.getItem("analysis.settings") || "{}"),
-    })),
+    [settings, setSettings] = useState<ChartSettings>(initialSettings),
     [series, setSeries] = useState<Series[]>([]),
     [warnings, setWarnings] = useState<string[]>([]),
     [metrics, setMetrics] = useState(["val_ppl"]),
