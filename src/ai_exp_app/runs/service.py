@@ -52,7 +52,7 @@ class RunService:
                 self.store.put("runs", id, combined)
             # Terminal-launched experiments are visible for monitoring, but remain
             # outside the platform queue and cannot be stopped from this UI.
-            external = remote(self.alias(), "external_status", {"ssh_alias": self.alias()}).get("runs", [])
+            external = result.get("external_runs", [])
             for run in external:
                 existing = self.store.get("runs", run["id"]) or {}
                 self.store.put("runs", run["id"], {**existing, **run})
