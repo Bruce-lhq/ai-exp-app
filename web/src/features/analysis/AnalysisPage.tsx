@@ -114,22 +114,15 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
             {!history.length ? (
               <p className="muted">先到历史管理导入实验。</p>
             ) : (
-              history.map((h) => (
-                <label className="check" key={h.id}>
-                  <input
-                    type="checkbox"
-                    checked={ids.includes(h.id)}
-                    onChange={(e) =>
-                      setIds(
-                        e.target.checked
-                          ? [...ids, h.id]
-                          : ids.filter((id) => id !== h.id),
-                      )
-                    }
-                  />
-                  {h.name || h.display_name}
-                </label>
-              ))
+              <>
+                <button className="subtle" onClick={() => setIds(ids.length === history.length ? [] : history.map((h) => h.id))}>{ids.length === history.length ? "取消全选" : "全选"}</button>
+                {history.map((h) => (
+                  <label className="check" key={h.id}>
+                    <input type="checkbox" checked={ids.includes(h.id)} onChange={(e) => setIds(e.target.checked ? [...ids, h.id] : ids.filter((id) => id !== h.id))} />
+                    {h.name || h.display_name}
+                  </label>
+                ))}
+              </>
             )}
           </div>
         </details>
