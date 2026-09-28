@@ -1126,3 +1126,5 @@ details .check {
   }
 }
 .notifications{position:absolute;right:25px;top:58px;width:440px;max-width:calc(100vw - 35px);z-index:10;box-shadow:0 12px 45px #20375020}.notifications .run-row{white-space:normal}.notifications small{line-height:1.7}
+.loading-overlay{position:fixed;right:24px;top:72px;z-index:30;display:flex;align-items:center;gap:9px;padding:10px 14px;border:1px solid #dbe3f0;border-radius:12px;background:rgba(255,255,255,.96);box-shadow:0 8px 24px rgba(32,55,90,.14);color:#31527f;font-size:13px}
+.spinner{width:14px;height:14px;border:2px solid #cbd8ed;border-top-color:#2861dc;border-radius:50%;animation:ai-exp-spin .8s linear infinite}@keyframes ai-exp-spin{to{transform:rotate(360deg)}}

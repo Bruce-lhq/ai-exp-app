@@ -95,7 +95,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     xLabel: "训练 tokens",
     yLabel: metric,
     xScale: "linear",
-    yScale: "linear",
+    yScale: "logarithmic",
     width: 1200,
     height: 600,
     pixelRatio: 2,

@@ -1,5 +1,6 @@
 import json
 import uuid
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,7 +14,12 @@ def enrich(record):
         parameters = json.loads((root / 'args.json').read_text())
     except (OSError, ValueError):
         parameters = {}
-    record['parameters'] = parameters if isinstance(parameters, dict) else {}
+    def safe(value):
+        if isinstance(value, float) and not math.isfinite(value): return None
+        if isinstance(value, dict): return {k: safe(v) for k, v in value.items()}
+        if isinstance(value, list): return [safe(v) for v in value]
+        return value
+    record['parameters'] = safe(parameters) if isinstance(parameters, dict) else {}
     return record
 
 

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -173,6 +174,14 @@ with contextlib.redirect_stdout(sys.stderr):
   m._validate_resume_config(c,m.resolved_model_config(a,c.get('model_config',{}).get('vocab_size',50257)))
 print(json.dumps({'errors':errors,'tokens_seen':c.get('tokens_seen')}))
 '''
+
+def json_safe(value):
+    """Keep the line protocol valid when argparse or metrics contain NaN/Infinity."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict): return {k: json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)): return [json_safe(v) for v in value]
+    return value
 def validate_checkpoint(run):
     path=Path(run['remote_path'])/'latest.pt'
     if not path.is_file():raise AgentError('CHECKPOINT_MISSING','没有最近完整 checkpoint，不能严格续跑')
@@ -191,7 +200,7 @@ def main():
     request={}
     try:
         request=json.load(sys.stdin);result=handle(request)
-        response=dict(version=1,request_id=request.get('request_id'),ok=True,result=result,error=None)
+        response=dict(version=1,request_id=request.get('request_id'),ok=True,result=json_safe(result),error=None)
     except Exception as exc:
         response=dict(version=1,request_id=request.get('request_id'),ok=False,result=None,error=dict(code=getattr(exc,'code','REMOTE_ERROR'),message=str(exc),details=getattr(exc,'details',None)))
-    print(json.dumps(response,ensure_ascii=False,allow_nan=False))
+    print(json.dumps(json_safe(response),ensure_ascii=False,allow_nan=False))
