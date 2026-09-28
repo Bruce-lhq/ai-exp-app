@@ -50,7 +50,9 @@ def create_router(store):
                 elif key == 'loss' and event in {'validation','eval','evaluation','val'}: metric = 'val_loss'
                 records.append({'metric': metric, 'value': raw, 'tokens': tokens, 'step': step, 'elapsed_s': elapsed})
                 metadata[metric] = {'name': metric}
-        result = {'name': run.get('display_name', identity), 'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
+        result = {'name': run.get('display_name') or run.get('name') or identity,
+                  'display_name': run.get('display_name') or run.get('name') or identity,
+                  'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
         _external_cache[identity] = (time.monotonic(), result)
         return result
 
@@ -84,7 +86,10 @@ def create_router(store):
             if not points:
                 warnings.append(f"{record['name']}：缺少 {metric} 或 {axis}，跳过此曲线，保留选择")
                 continue
-            result.append({'id': identity, 'name': record['name'], 'points': points})
+            # 图例默认采用用户可见的备注名；旧记录没有 display_name 时回退到原始名称。
+            result.append({'id': identity,
+                           'name': record.get('display_name') or record.get('name') or identity,
+                           'points': points})
         return {'series': result, 'warnings': warnings}
 
     @router.get('/api/templates')
