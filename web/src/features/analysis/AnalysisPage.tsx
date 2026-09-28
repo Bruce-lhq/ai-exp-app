@@ -152,7 +152,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           <button
             className="primary"
             disabled={!series.some((s) => s.points.length)}
-            onClick={() => downloadPng(series, settings, appearance)}
+            onClick={() => downloadPng(orderedSeries, settings, appearance)}
           >
             <Download size={15} />
             下载 PNG
