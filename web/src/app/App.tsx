@@ -19,6 +19,7 @@ export default function App() {
     [message, setMessage] = useState(""),
     [connection, setConnection] = useState<any>({ connected: false }),
     [historical, setHistorical] = useState<Parameters | null>(null);
+  const [loading, setLoading] = useState(0);
   const [notices,setNotices]=useState<any[]>([]),[noticeOpen,setNoticeOpen]=useState(false);
   const seen=useRef(new Set<string>());
   const notify = (m: string) => setMessage(m);
@@ -31,6 +32,11 @@ export default function App() {
     }).catch(()=>{});
     poll();const t=setInterval(poll,10000);return()=>clearInterval(t);
   },[]);
+  useEffect(() => {
+    const handler = (event: Event) => setLoading((value) => Math.max(0, value + Number((event as CustomEvent).detail || 0)));
+    window.addEventListener("ai-exp-loading", handler);
+    return () => window.removeEventListener("ai-exp-loading", handler);
+  }, []);
   useEffect(() => {
     const check = () =>
       api("/api/connection")
@@ -155,6 +161,7 @@ export default function App() {
           </button>
         </div>
       )}
+      {loading > 0 && <div className="loading-overlay" role="status" aria-label="正在加载"><span className="spinner" /> 正在从云端更新…</div>}
     </div>
   );
 }

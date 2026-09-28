@@ -5,13 +5,19 @@ export async function api<T = any>(
 ): Promise<T> {
   const requestMethod = method || (body === undefined ? "GET" : "POST");
   const payload = body === undefined && requestMethod !== "GET" ? {} : body;
-  const response = await fetch(path, {
-    method: requestMethod,
-    credentials: "same-origin",
-    headers:
-      payload === undefined ? undefined : { "Content-Type": "application/json" },
-    body: payload === undefined ? undefined : JSON.stringify(payload),
-  });
+  window.dispatchEvent(new CustomEvent("ai-exp-loading", { detail: 1 }));
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: requestMethod,
+      credentials: "same-origin",
+      headers:
+        payload === undefined ? undefined : { "Content-Type": "application/json" },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
+  } finally {
+    window.dispatchEvent(new CustomEvent("ai-exp-loading", { detail: -1 }));
+  }
   if (!response.ok) {
     let message;
     try {

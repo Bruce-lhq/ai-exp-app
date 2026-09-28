@@ -17,7 +17,7 @@ const initial: ChartSettings = {
   xLabel: "训练 tokens",
   yLabel: "val_ppl",
   xScale: "linear",
-  yScale: "linear",
+  yScale: "logarithmic",
   width: 1600,
   height: 900,
   pixelRatio: 2,
