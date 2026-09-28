@@ -19,6 +19,27 @@ ROOT=Path(os.environ.get('AI_EXP_REMOTE_ROOT','/your_exp/ai_exp_app/state'))
 READERS={'list_directory':files.list_directory,'inspect_project':projects.inspect_project,'read_schema':projects.read_schema,'inspect_files':files.inspect_files,'read_file':files.read_file,'file_manifest':files.file_manifest,'read_file_chunk':files.read_file_chunk}
 MUTATIONS={'submit','stop','resume','queue_order','queue_pause','queue_resume','queue_remove','delete_preview','delete_confirm'}
 
+def external_runs(alias='gpu'):
+    completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
+    if completed.returncode:
+        raise AgentError('EXTERNAL_STATUS', '无法读取终端 GPU 分组', completed.stderr[-2000:])
+    dashboard = subprocess.run(['dashboard'], text=True, capture_output=True, timeout=15)
+    details = {}
+    for line in dashboard.stdout.splitlines() if dashboard.returncode == 0 else []:
+        parts = [x.strip() for x in line.split('|')]
+        if len(parts) >= 7 and parts[1] not in {'GPU', '---'}:
+            details[parts[5]] = {'dashboard_status': parts[2], 'progress': parts[3], 'remaining': parts[4], 'queue_name': parts[6]}
+    items=[]
+    for line in completed.stdout.splitlines():
+        parts=line.split('\t')
+        if len(parts) < 3 or not parts[0].isdigit(): continue
+        group, gpus, path = parts[0], parts[1], parts[2]
+        items.append(dict(id='external-'+hashlib.sha1(path.encode()).hexdigest()[:16], display_name=Path(path).name,
+                          status='external_running', external=True, group=group,
+                          gpu_ids=[int(x) for x in gpus.split(',') if x.isdigit()], remote_path=path,
+                          ssh_alias=alias, **details.get(Path(path).name, {})))
+    return items
+
 def handle(request,root=None,start_daemon=True):
     if request.get('version')!=1:raise AgentError('PROTOCOL_VERSION','不支持的协议版本')
     op=request['operation'];p=request.get('payload',{})
@@ -59,6 +80,8 @@ def handle(request,root=None,start_daemon=True):
             return previous['result']
         if op=='status':
             result={k:state[k] for k in ('revision','paused','queue','events')};result['runs']=list(state['runs'].values())
+            try: result['external_runs'] = external_runs(p.get('ssh_alias', 'gpu'))
+            except Exception as exc: result['external_runs'] = []; result['external_error'] = str(exc)
             try:result['gpus']=gpu_status()
             except Exception as exc:result['gpus']=[];result['gpu_error']=str(exc)
         elif op=='events':result=[e for e in state['events'] if e['seq']>p.get('after',0)]
