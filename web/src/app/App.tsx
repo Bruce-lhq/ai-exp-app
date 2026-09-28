@@ -15,7 +15,7 @@ import { MonitorPage } from "../features/monitor/MonitorPage";
 import { HistoryPage } from "../features/history/HistoryPage";
 import { AnalysisPage } from "../features/analysis/AnalysisPage";
 export default function App() {
-  const [page, setPage] = useState(new URLSearchParams(location.search).has("run") ? "monitor" : "configure"),
+  const [page, setPage] = useState("monitor"),
     [message, setMessage] = useState(""),
     [connection, setConnection] = useState<any>({ connected: false }),
     [historical, setHistorical] = useState<Parameters | null>(null);
