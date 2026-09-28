@@ -38,6 +38,23 @@ def create_router(store, cache_root: Path):
         except (ValueError, OSError) as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    @router.post('/api/history/sync-running')
+    def sync_running():
+        imported = []
+        for run in store.list('runs'):
+            if not run.get('external') or run.get('status') != 'external_running':
+                continue
+            try:
+                imported.append(import_history(store, {
+                    'kind': 'remote', 'path': run['remote_path'],
+                    'ssh_alias': run.get('ssh_alias', 'gpu')}, cache_root,
+                    run.get('display_name'), run_id=run['id'], synchronize=True,
+                    visibility='visible'))
+            except (ValueError, OSError, RuntimeError) as exc:
+                imported.append({'id': run['id'], 'name': run.get('display_name'),
+                                 'sync_status': 'pending', 'sync_error': str(exc)})
+        return {'count': len(imported), 'items': imported}
+
     @router.patch('/api/history/{identity}')
     def update(identity: str, body: dict):
         with run_lock(identity):

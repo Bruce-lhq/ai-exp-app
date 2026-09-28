@@ -28,14 +28,22 @@ def handle(request,root=None,start_daemon=True):
         if completed.returncode:
             raise AgentError('EXTERNAL_STATUS', '无法读取终端 GPU 分组', completed.stderr[-2000:])
         items=[]
+        dashboard = subprocess.run(['dashboard'], text=True, capture_output=True, timeout=15)
+        dashboard_lines = dashboard.stdout.splitlines() if dashboard.returncode == 0 else []
+        details = {}
+        for line in dashboard_lines:
+            parts = [x.strip() for x in line.split('|')]
+            if len(parts) >= 7 and parts[1] and parts[1] != 'GPU' and parts[1] != '---':
+                details[parts[5]] = {'dashboard_status': parts[2], 'progress': parts[3], 'remaining': parts[4], 'queue_name': parts[6]}
         for line in completed.stdout.splitlines():
             parts=line.split('\t')
             if len(parts) < 3 or not parts[0].isdigit(): continue
             group, gpus, path = parts[0], parts[1], parts[2]
+            info=details.get(Path(path).name, {})
             items.append(dict(id='external-'+hashlib.sha1(path.encode()).hexdigest()[:16], display_name=Path(path).name,
                               status='external_running', external=True, group=group,
                               gpu_ids=[int(x) for x in gpus.split(',') if x.isdigit()], remote_path=path,
-                              ssh_alias=p.get('ssh_alias','gpu')))
+                              ssh_alias=p.get('ssh_alias','gpu'), **info))
         return {'runs': items, 'source': 'gpu-groups'}
     root=Path(root or ROOT);store=Store(root)
     if op=='gpus':return gpu_status()

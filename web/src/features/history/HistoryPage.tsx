@@ -62,6 +62,10 @@ export function HistoryPage({
             <FolderInput size={16} />
             从云端导入
           </button>
+          <button onClick={() => action(async () => { const result = await api("/api/history/sync-running", {}, "POST"); notify(`已更新 ${result.count || 0} 个正在运行的实验`); })}>
+            <RefreshCw size={16} />
+            拉取正在运行实验
+          </button>
         </div>
       </div>
       <section className="panel">

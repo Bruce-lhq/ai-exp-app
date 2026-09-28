@@ -164,6 +164,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
                     {r.gpu_ids?.length
                       ? `GPU ${r.gpu_ids.join(", ")}`
                       : "等待分配"}
+                    {r.progress ? ` · ${r.progress}` : ""}
+                    {r.remaining ? ` · 剩余 ${r.remaining}` : ""}
+                    {r.queue_name && r.queue_name !== "-" ? ` · 队列 ${r.queue_name}` : ""}
                   </small>
                 </span>
                 <span className={`status ${r.status}`}>

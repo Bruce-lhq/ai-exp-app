@@ -72,4 +72,8 @@ export type Run = {
   archived?: boolean;
   tags?: string[];
   notes?: string;
+  progress?: string;
+  remaining?: string;
+  queue_name?: string;
+  external?: boolean;
 };

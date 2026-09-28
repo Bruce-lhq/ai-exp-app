@@ -28,6 +28,8 @@ def import_history(store, source, cache_root, name=None, run_id=None, synchroniz
     existing = next((r for r in store.list('history') if r.get('source_key') == source_key or (run_id and r.get('run_id') == run_id)), None)
     if existing:
         existing['visibility'] = 'visible'
+        if synchronize:
+            existing.update(sync_history(existing, cache_root))
         return store.put('history', existing['id'], enrich(existing))
     identity = run_id or str(uuid.uuid4())
     name = name or Path(source['path']).name
