@@ -26,6 +26,9 @@ def sync_once(store, cache_root):
                 existing['status'] = run.get('status', existing['status'])
                 existing['attempts'] = run.get('attempts', [])
                 existing['stop_tokens'] = run.get('stop_tokens')
+                if run.get('project_id'):
+                    display = store.get('preferences', f"parameters:{run['project_id']}") or {}
+                    existing['parameter_labels'] = display.get('aliases', {})
                 if existing.get('visibility') == 'tracking' and run.get('status') in TERMINAL:
                     existing['visibility'] = 'visible'
                 store.put('history', existing['id'], existing)
