@@ -50,6 +50,12 @@ class RunService:
                 combined["run_dir"] = run.get("run_dir") or run.get("remote_path") or old.get("run_dir")
                 combined["remote_path"] = combined["run_dir"]
                 self.store.put("runs", id, combined)
+            # Terminal-launched experiments are visible for monitoring, but remain
+            # outside the platform queue and cannot be stopped from this UI.
+            external = remote(self.alias(), "external_status", {"ssh_alias": self.alias()}).get("runs", [])
+            for run in external:
+                if not self.store.get("runs", run["id"]):
+                    self.store.put("runs", run["id"], run)
             for event in result.get("events", []):
                 apply_started_event(self.store, event)
                 if event.get("kind") == "failed":
@@ -138,7 +144,10 @@ class RunService:
         @router.get("/runs/{id}/log")
         def log(id: str, offset: int = 0, limit: int = 65536):
             item = self.run(id)
-            result = remote(item.get("ssh_alias", self.alias()), "read_log", {"run_id": id, "offset": max(0, offset), "limit": min(max(limit, 1), 262144)})
+            payload = {"run_id": id, "offset": max(0, offset), "limit": min(max(limit, 1), 262144)}
+            if item.get("external"):
+                payload["path"] = item.get("remote_path")
+            result = remote(item.get("ssh_alias", self.alias()), "read_log", payload)
             if 'text' not in result:
                 result['text'] = result['content'] if 'content' in result else base64.b64decode(result.get('data', '')).decode('utf-8', errors='replace')
             return result

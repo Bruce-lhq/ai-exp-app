@@ -6,6 +6,8 @@ from .sync import run_lock, sync_history
 
 def sync_once(store, cache_root):
     for run in store.list('runs'):
+        if run.get('external'):
+            continue
         identity = run['id']
         with run_lock(identity):
             existing = store.get('history', identity)
