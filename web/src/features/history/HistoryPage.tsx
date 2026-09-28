@@ -268,6 +268,7 @@ export function HistoryPage({
       {source && (
         <DirectoryPicker
           source={source}
+          initial={source === "remote" ? "/your_exp/runs" : "/Users/your-user/gpu_downloads/"}
           onSelect={(path) =>
             action(async () => {
               await api("/api/history/import", { source, path, alias: "gpu" });
