@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pause, Play, Square, GripVertical, RefreshCw } from "lucide-react";
 import { api, items, type Run } from "../../app/api";
 import { Empty, Modal } from "../../app/ui";
@@ -20,15 +20,18 @@ export const statusNames: Record<string, string> = {
   accepted: "已提交",
   external_running: "终端启动",
 };
+let lastRuns: Run[] = [];
+let lastQueue: any = { runs: [], paused: false };
+let lastPlot: { key: string; series: Series[] } | undefined;
 export function MonitorPage({ notify }: { notify: (s: string) => void }) {
-  const [runs, setRuns] = useState<Run[]>([]),
-    [queue, setQueue] = useState<any>({ runs: [], paused: false }),
+  const [runs, setRuns] = useState<Run[]>(lastRuns),
+    [queue, setQueue] = useState<any>(lastQueue),
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("run")||""),
     [log, setLog] = useState(""),
     [stop, setStop] = useState(""),
     [pauseAlso, setPauseAlso] = useState(false),
     [drag, setDrag] = useState(0),
-    [series, setSeries] = useState<Series[]>([]),
+    [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
     [metric, setMetric] = useState("val_ppl"),
     [title, setTitle] = useState(() => localStorage.getItem("monitor.title") || ""),
     [appearance, setAppearance] = useState<Record<string, { name?: string; color?: string; order?: number }>>(() => {
@@ -37,51 +40,83 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [appearanceDrag, setAppearanceDrag] = useState("");
   const [history, setHistory] = useState<any[]>([]),
     [comparisons, setComparisons] = useState<string[]>([]);
+  const [curveWarning, setCurveWarning] = useState("");
+  const [curveLoading, setCurveLoading] = useState(true);
   async function refresh() {
-    const [r, q, g] = await Promise.all([
-      api("/api/runs"),
-      api("/api/queue"),
-      Promise.resolve([]),
+    const [r, q] = await Promise.all([
+      api("/api/runs", undefined, undefined, { background: true }),
+      api("/api/queue", undefined, undefined, { background: true }),
     ]);
-    setRuns(items(r));
+    lastRuns = items(r);
+    lastQueue = q;
+    setRuns(lastRuns);
     setQueue(q);
-    void g;
   }
   useEffect(() => {
     localStorage.setItem("monitor.title", title);
     localStorage.setItem("monitor.appearance", JSON.stringify(appearance));
   }, [title, appearance]);
   useEffect(() => {
-    refresh().catch((e) => notify(e.message));
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try { await refresh(); } catch { /* Keep the last status during reconnect. */ }
+      if (active) timer = setTimeout(poll, 3000);
+    };
+    void poll();
     api("/api/history")
       .then((x) => setHistory(items(x)))
       .catch(() => {});
-    const t = setInterval(() => refresh().catch(() => {}), 5000);
-    return () => clearInterval(t);
+    return () => { active = false; clearTimeout(timer); };
   }, []);
+  const liveIdsKey = JSON.stringify(runs.filter((run) => ["running", "starting", "stopping", "external_running"].includes(run.status)).map((run) => run.id));
   useEffect(() => {
     let alive = true;
-    const load = () => {
-      const liveIds = runs.filter((run) => ["running", "starting", "stopping", "external_running"].includes(run.status)).map((run) => run.id);
-      api("/api/analysis/series", {
-        history_ids: [...liveIds, ...comparisons], metric, x_axis: "tokens",
-      }).then((x) => { if (alive) setSeries(x.series || []); }).catch(() => { if (alive) setSeries([]); });
-      if (!selected) return;
-      api(`/api/runs/${selected}/log`)
-        .then((x) => {
-          if (alive) setLog(typeof x === "string" ? x : x.text || x.log || "");
-        })
-        .catch((e) => {
-          if (alive) setLog(e.message);
-        });
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const liveIds: string[] = JSON.parse(liveIdsKey);
+    const load = async () => {
+      if (alive) setCurveLoading(true);
+      try {
+        const x = await api("/api/analysis/series", {
+          history_ids: [...new Set([...liveIds, ...comparisons])], live_ids: liveIds, metric, x_axis: "tokens",
+        }, undefined, { background: true, signal: controller.signal });
+        if (alive) {
+          setSeries(x.series || []);
+          setCurveWarning((x.warnings || []).join("；"));
+          lastPlot = { key: JSON.stringify([metric, comparisons]), series: x.series || [] };
+        }
+      } catch (e) {
+        if (alive) setCurveWarning(`更新暂时失败，保留上次曲线：${(e as Error).message}`);
+      }
+      if (alive) setCurveLoading(false);
+      if (alive) timer = setTimeout(load, 3000);
     };
-    load();
-    const t = setInterval(load, 5000);
+    void load();
     return () => {
       alive = false;
-      clearInterval(t);
+      controller.abort();
+      clearTimeout(timer);
     };
-  }, [selected, metric, comparisons, runs]);
+  }, [metric, JSON.stringify(comparisons), liveIdsKey]);
+  useEffect(() => {
+    if (!selected) return;
+    let alive = true;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    setLog("");
+    const load = async () => {
+      try {
+        const x = await api(`/api/runs/${selected}/log`, undefined, undefined, { background: true, signal: controller.signal });
+        if (alive) setLog(typeof x === "string" ? x : x.text || x.log || "");
+      } catch (e) {
+        if (alive) setLog((previous) => previous || (e as Error).message);
+      }
+      if (alive) timer = setTimeout(load, 3000);
+    };
+    void load();
+    return () => { alive = false; controller.abort(); clearTimeout(timer); };
+  }, [selected]);
   async function action(fn: () => Promise<unknown>) {
     try {
       await fn();
@@ -90,23 +125,23 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       notify((e as Error).message);
     }
   }
-  const settings: ChartSettings = {
+  const settings = useMemo<ChartSettings>(() => ({
     metric,
     xAxis: "tokens",
     title,
     xLabel: "Trained tokens (B)",
     yLabel: metric,
     xScale: "linear",
-    yScale: "logarithmic",
+    yScale: metric.toLowerCase().includes('ppl') ? "logarithmic" : "linear",
     width: 1536,
-    height: 1032,
+    height: 1044,
     pixelRatio: 1.5,
     xMin: 0,
     xMax: 10.75,
-  };
-  const orderedSeries = [...series].sort((a, b) =>
+  }), [metric, title]);
+  const orderedSeries = useMemo(() => [...series].sort((a, b) =>
     (appearance[a.id]?.order ?? series.indexOf(a)) - (appearance[b.id]?.order ?? series.indexOf(b)),
-  );
+  ), [series, appearance]);
   return (
     <>
       <div className="page-heading">
@@ -115,7 +150,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           <h1>运行监控</h1>
           <p>运行留在云端。断开工作台，不会中断训练与队列。</p>
         </div>
-        <button onClick={() => action(refresh)}>
+        <button onClick={() => action(() => api("/api/connection/refresh", {}))}>
           <RefreshCw size={15} />
           刷新
         </button>
@@ -126,9 +161,10 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
           <label>图标题 <input value={title} onChange={(e) => setTitle(e.target.value.trim())} /></label>
           <details><summary>历史对照（{comparisons.length}）</summary><button className="subtle" onClick={() => setComparisons(comparisons.length === history.length ? [] : history.map((h) => h.id))}>{comparisons.length === history.length ? "取消全选" : "全选"}</button>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
-          <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>train_loss</option></datalist>
+          <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>R_min</option><option>R_mean</option><option>update_rms</option><option>train_loss</option></datalist>
         </div>
-        {series.length ? <ExperimentChart series={orderedSeries} settings={settings} appearance={appearance} /> : <Empty>当前没有可绘制的 {metric} 数据</Empty>}
+        {curveWarning && <p className="warning">{curveWarning}</p>}
+        {series.length ? <ExperimentChart series={orderedSeries} settings={settings} appearance={appearance} /> : <Empty>{curveLoading ? <span role="status"><span className="spinner" /> 正在读取运行曲线…</span> : `当前没有可绘制的 ${metric} 数据`}</Empty>}
         {!!series.length && <details className="chart-appearance"><summary>编辑图例、顺序与配色</summary>{orderedSeries.map((s, i) => <div key={s.id} className="row" draggable onDragStart={() => setAppearanceDrag(s.id)} onDragOver={(e) => e.preventDefault()} onDrop={() => {
           const from = orderedSeries.findIndex((x) => x.id === appearanceDrag); if (from < 0 || from === i) return;
           const next = [...orderedSeries]; const [item] = next.splice(from, 1); next.splice(i, 0, item);

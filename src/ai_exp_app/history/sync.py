@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import tempfile
 import threading
@@ -100,6 +101,8 @@ def sync_history(record, cache_root):
                         offset += len(chunk)
                         yield chunk
             replace_complete_file(dest, chunks())
+            if name == 'args.json' and record.get('parameter_overrides'):
+                apply_parameter_overrides(record)
             copied.append(name)
         if source['kind'] == 'local':
             after = local_manifest(source['path'])
@@ -112,3 +115,15 @@ def sync_history(record, cache_root):
             warnings.append('缺少 metrics.jsonl，曲线不可用')
         return {'sync_status': 'synced' if after == files else 'pending', 'files': copied,
                 'warnings': warnings, 'sync_error': None, 'manifest': files if after == files else []}
+
+
+def apply_parameter_overrides(record):
+    target = Path(record['cache_dir']) / 'args.json'
+    parameters = json.loads(target.read_text()) if target.exists() else {}
+    for field, value in record.get('parameter_overrides', {}).items():
+        group = next((parameters[key] for key in ('training', 'runtime')
+                      if isinstance(parameters.get(key), dict) and field in parameters[key]), parameters)
+        if field in parameters:
+            group = parameters
+        group[field] = value
+    replace_complete_file(target, [json.dumps(parameters, ensure_ascii=False, indent=2).encode()])

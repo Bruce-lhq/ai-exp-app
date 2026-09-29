@@ -1,10 +1,13 @@
 import uuid
 import json
 import time
+import threading
+from collections import OrderedDict
 from ai_exp_app.projects.api import remote
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from .metrics import read_metrics
+from .logs import read_log_metrics
 from .tables import render_table
 from .templates import ensure_default, normalize_columns
 from ai_exp_app.history.importer import enrich
@@ -15,45 +18,83 @@ _external_cache = {}
 def create_router(store):
     router = APIRouter()
     ensure_default(store)
+    parsed_cache = OrderedDict()
+    log_cache = OrderedDict()
+    cache_lock = threading.Lock()
 
     def load(identity):
         record = store.get('history', identity)
         if not record:
             raise HTTPException(404, f'实验不存在：{identity}')
         record = enrich(record)
-        metrics = read_metrics(Path(record['cache_dir']) / 'metrics.jsonl', identity, record.get('attempts'))
+        path = Path(record['cache_dir']) / 'metrics.jsonl'
+        stat = path.stat() if path.exists() else None
+        signature = (str(path), (stat.st_ino, stat.st_size, stat.st_mtime_ns) if stat else None,
+                     json.dumps(record.get('attempts'), sort_keys=True))
+        with cache_lock:
+            cached = parsed_cache.get(identity)
+            if cached and cached[0] == signature:
+                metrics = cached[1]
+            else:
+                metrics = read_metrics(path, identity, record.get('attempts'))
+                parsed_cache[identity] = (signature, metrics)
+            parsed_cache.move_to_end(identity)
+            while len(parsed_cache) > 16:
+                parsed_cache.popitem(last=False)
+            log_path = Path(record['cache_dir']) / 'train.log'
+            log_stat = log_path.stat() if log_path.exists() else None
+            log_signature = (str(log_path), (log_stat.st_ino, log_stat.st_size, log_stat.st_mtime_ns) if log_stat else None)
+            cached_log = log_cache.get(identity)
+            if cached_log and cached_log[0] == log_signature:
+                logs = cached_log[1]
+            else:
+                logs = read_log_metrics(log_path, identity)
+                log_cache[identity] = (log_signature, logs)
+            log_cache.move_to_end(identity)
+            while len(log_cache) > 16:
+                log_cache.popitem(last=False)
         record.update(metrics)
+        if logs['records']:
+            record['records'] = [r for r in metrics['records'] if r['metric'] != 'tokens_per_second'] + logs['records']
+            record['metadata'] = {**metrics['metadata'], **logs['metadata']}
         return record
 
-    def load_external(identity):
-        run = store.get('runs', identity)
-        if not run or not run.get('external'):
-            return None
-        cached = _external_cache.get(identity)
-        if cached and time.monotonic() - cached[0] < 4:
-            return cached[1]
-        value = remote(run.get('ssh_alias', 'gpu'), 'read_file', {'path': run['remote_path'], 'name': 'metrics.jsonl'})
-        records, metadata = [], {}
-        for index, line in enumerate(str(value.get('content', '')).splitlines()):
-            try: item = json.loads(line)
-            except ValueError: continue
-            if not isinstance(item, dict): continue
-            event = str(item.get('event', '')).lower()
-            tokens = item.get('tokens_seen')
-            step = item.get('optimizer_step', item.get('step'))
-            elapsed = item.get('elapsed_s')
-            for key, raw in item.items():
-                if key in {'tokens_seen','optimizer_step','step','elapsed_s'} or not isinstance(raw, (int,float)) or isinstance(raw,bool): continue
-                metric = key
-                if key in {'perplexity','ppl'}: metric = ('val_' if event in {'validation','eval','evaluation','val'} else 'train_') + 'ppl'
-                elif key == 'loss' and event in {'train','training'}: metric = 'train_loss'
-                elif key == 'loss' and event in {'validation','eval','evaluation','val'}: metric = 'val_loss'
-                records.append({'metric': metric, 'value': raw, 'tokens': tokens, 'step': step, 'elapsed_s': elapsed})
-                metadata[metric] = {'name': metric}
-        result = {'name': run.get('display_name') or run.get('name') or identity,
-                  'display_name': run.get('display_name') or run.get('name') or identity,
-                  'records': records, 'warnings': [], 'metadata': metadata, 'parameter_count': None}
-        _external_cache[identity] = (time.monotonic(), result)
+    def load_live(identities, metric, axis):
+        groups, result = {}, {}
+        for identity in dict.fromkeys(identities):
+            run = store.get('runs', identity)
+            if run and run.get('external'):
+                groups.setdefault(run.get('ssh_alias', 'gpu'), []).append(run)
+        for alias, runs in groups.items():
+            paths = [{'id': run['id'], 'path': run['remote_path']} for run in runs]
+            key = (alias, metric, axis, json.dumps(paths, sort_keys=True))
+            cached = _external_cache.get(key)
+            error = None
+            try:
+                if cached and time.monotonic() - cached[0] < 3:
+                    values = cached[1]
+                else:
+                    values = remote(alias, 'metric_series', {'runs': paths, 'metric': metric, 'axis': axis})
+                    _external_cache[key] = (time.monotonic(), values)
+                    if len(_external_cache) > 16:
+                        del _external_cache[next(iter(_external_cache))]
+            except HTTPException as exc:
+                error = str(exc.detail)
+                values = cached[1] if cached else {}
+            for run in runs:
+                identity = run['id']
+                if error and not cached:
+                    try:
+                        result[identity] = load(identity)
+                        result[identity]['warnings'] = [*result[identity]['warnings'], '更新失败，显示本地缓存：' + error]
+                        continue
+                    except HTTPException:
+                        pass
+                value = values.get(identity, {})
+                result[identity] = {'name': run.get('display_name') or identity,
+                    'records': [{'metric': metric, axis: p['x'], 'value': p['y']} for p in value.get('points', [])],
+                    'metadata': {m: {'name': m} for m in value.get('metrics', [])},
+                    'warnings': [*value.get('warnings', []), *(['更新失败，保留上次曲线：' + error] if error else [])]}
         return result
 
     @router.get('/api/history/{identity}/metrics')
@@ -66,13 +107,18 @@ def create_router(store):
         metric, axis = body.get('metric', 'val_ppl'), body.get('x_axis', body.get('axis', 'tokens'))
         if axis not in {'tokens', 'step', 'elapsed_s'}:
             raise HTTPException(422, '无效横轴')
-        result, warnings = [], []
+        result, warnings, available_metrics = [], [], set()
+        live_records = load_live([identity for identity in body.get('live_ids', []) if identity in body.get('history_ids', [])], metric, axis)
         for identity in body.get('history_ids', []):
             try:
-                record = load_external(identity) if (store.get('runs', identity) or {}).get('external') else load(identity)
+                record = live_records[identity] if identity in live_records else load(identity)
+                history = store.get('history', identity)
+                if history:
+                    record = {**record, 'name': history.get('name'), 'display_name': history.get('display_name')}
             except HTTPException as exc:
                 warnings.append(str(exc.detail))
                 continue
+            available_metrics.update(record['metadata'])
             points = [{'x': r[axis], 'y': r['value']} for r in record['records'] if r['metric'] == metric and isinstance(r.get(axis), (int, float))]
             if points:
                 partitioned = [points[0]]
@@ -90,7 +136,7 @@ def create_router(store):
             result.append({'id': identity,
                            'name': record.get('display_name') or record.get('name') or identity,
                            'points': points})
-        return {'series': result, 'warnings': warnings}
+        return {'series': result, 'warnings': warnings, 'metrics': sorted(available_metrics)}
 
     @router.get('/api/templates')
     @router.get('/api/analysis/templates')

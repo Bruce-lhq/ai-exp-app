@@ -20,7 +20,7 @@ def main():
     target=root+'/releases/agent-'+digest+'.pyz'
     wrapper=Path.home()/'.local/bin/ssh';ssh=str(wrapper) if wrapper.exists() else 'ssh'
     def run(command,data=None):
-        return subprocess.run([ssh,args.alias,'-o','ControlMaster=no','-o','ControlPath=none','-o','ConnectTimeout=12',command],input=data,capture_output=True,timeout=60,check=True)
+        return subprocess.run([ssh,args.alias,'-o','ConnectTimeout=12',command],input=data,capture_output=True,timeout=60,check=True)
     # Only trusted installation paths are interpolated, with shell quoting.
     # One connection: a dropped upload cannot publish an incomplete release.
     install = '\n'.join([

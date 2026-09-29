@@ -23,7 +23,10 @@ export function HistoryPage({
     [deletion, setDeletion] = useState<any>(null),
     [selected, setSelected] = useState<string[]>([]);
   async function refresh() {
-    setHistory(items(await api("/api/history")));
+    const next = items(await api("/api/history"));
+    setHistory(next);
+    const available = new Set(next.map((item: any) => item.id));
+    setSelected((current) => current.filter((id) => available.has(id)));
   }
   useEffect(() => {
     refresh().catch((e) => notify(e.message));
@@ -45,6 +48,7 @@ export function HistoryPage({
         .toLowerCase()
         .includes(filter.toLowerCase()),
   );
+  const allShownSelected = shown.length > 0 && shown.every((h) => selected.includes(h.id));
   return (
     <>
       <div className="page-heading">
@@ -83,7 +87,10 @@ export function HistoryPage({
             />
             显示已归档
           </label>
-          <button onClick={() => action(refresh)}>
+          <button onClick={() => action(async () => {
+            const result = await api("/api/history/refresh", {});
+            notify(result.warnings?.length ? result.warnings.join("；") : "历史缓存已更新");
+          })}>
             <RefreshCw size={14} />
             刷新
           </button>
@@ -101,8 +108,10 @@ export function HistoryPage({
               导出所选 ({selected.length})
             </button>
           )}
-          <button onClick={() => setSelected(selected.length === shown.length ? [] : shown.map((h) => h.id))}>
-            {selected.length === shown.length && shown.length ? "取消全选" : "全选历史"}
+          <button onClick={() => setSelected(allShownSelected
+            ? selected.filter((id) => !shown.some((h) => h.id === id))
+            : [...new Set([...selected, ...shown.map((h) => h.id)])])}>
+            {allShownSelected ? "取消全选" : "全选历史"}
           </button>
         </div>
         {!shown.length ? (
@@ -118,7 +127,7 @@ export function HistoryPage({
                 <div className="history-title">
                   <input
                     type="checkbox"
-                    aria-label={`选择 ${h.name}`}
+                    aria-label={`选择 ${h.name || h.display_name}`}
                     checked={selected.includes(h.id)}
                     onChange={(e) =>
                       setSelected(

@@ -19,7 +19,7 @@ const initial: ChartSettings = {
   xScale: "linear",
   yScale: "logarithmic",
   width: 1536,
-  height: 1032,
+  height: 1044,
   pixelRatio: 1.5,
   xMin: 0,
   xMax: 10.75,
@@ -41,20 +41,33 @@ function initialSettings(): ChartSettings {
     saved.xMin = initial.xMin;
     saved.xMax = initial.xMax;
   }
+  if (localStorage.getItem("analysis.settings.v4") !== "1") {
+    localStorage.setItem("analysis.settings.v4", "1");
+    saved.height = Math.round((saved.width || initial.width) * 1401 / 2061);
+  }
   return { ...initial, ...saved };
 }
 function initialAppearance(): Record<string, { name?: string; color?: string; order?: number }> {
   try { return JSON.parse(localStorage.getItem("analysis.appearance") || "{}"); } catch { return {}; }
 }
+function initialIds(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem("analysis.ids") || "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+let lastPlot: { key: string; series: Series[]; warnings: string[]; metrics: string[] } | undefined;
+const plotKey = (ids: string[], settings: ChartSettings) => JSON.stringify([ids, settings.metric, settings.xAxis]);
 export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
+  const [view, setView] = useState<"plot" | "table">("plot");
   const [history, setHistory] = useState<any[]>([]),
-    [ids, setIds] = useState<string[]>(() =>
-      JSON.parse(localStorage.getItem("analysis.ids") || "[]"),
-    ),
+    [ids, setIds] = useState<string[]>(initialIds),
     [settings, setSettings] = useState<ChartSettings>(initialSettings),
-    [series, setSeries] = useState<Series[]>([]),
-    [warnings, setWarnings] = useState<string[]>([]),
-    [metrics, setMetrics] = useState(["val_ppl"]),
+    [series, setSeries] = useState<Series[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.series : []),
+    [warnings, setWarnings] = useState<string[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.warnings : []),
+    [metrics, setMetrics] = useState(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.metrics : ["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms"]),
     [advanced, setAdvanced] = useState(false),
     [appearance, setAppearance] = useState(initialAppearance),
     [appearanceDrag, setAppearanceDrag] = useState("");
@@ -63,12 +76,19 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   }, [appearance]);
   useEffect(() => {
     api("/api/history")
-      .then((x) => setHistory(items(x).filter((h) => h.visibility !== "archived")))
+      .then((x) => {
+        const visible = items(x).filter((h) => h.visibility !== "archived");
+        setHistory(visible);
+        const available = new Set(visible.map((h) => h.id));
+        setIds((current) => current.filter((id) => available.has(id)));
+      })
       .catch((e) => notify(e.message));
   }, []);
   useEffect(() => {
     localStorage.setItem("analysis.ids", JSON.stringify(ids));
     localStorage.setItem("analysis.settings", JSON.stringify(settings));
+  }, [JSON.stringify(ids), JSON.stringify(settings)]);
+  useEffect(() => {
     let alive = true;
     api("/api/analysis/series", {
       history_ids: ids,
@@ -77,34 +97,24 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     })
       .then((x) => {
         if (alive) {
-          setSeries(x.series || []);
-          setWarnings((x.warnings || []).map((w: any) => w.message || w));
+          const snapshot = {key: plotKey(ids, settings), series: x.series || [],
+            warnings: (x.warnings || []).map((w: any) => w.message || w),
+            metrics: [...new Set<string>(["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms", ...(x.metrics || [])])]};
+          lastPlot = snapshot;
+          setSeries(snapshot.series);
+          setWarnings(snapshot.warnings);
+          setMetrics(snapshot.metrics);
         }
       })
       .catch((e) => {
         if (alive) {
-          setSeries([]);
           setWarnings([e.message]);
         }
       });
     return () => {
       alive = false;
     };
-  }, [JSON.stringify(ids), JSON.stringify(settings)]);
-  useEffect(() => {
-    Promise.all(
-      ids.map((id) =>
-        api(`/api/history/${id}/metrics`).catch(() => ({ metadata: {} })),
-      ),
-    ).then((all) =>
-      setMetrics([
-        ...new Set([
-          "val_ppl",
-          ...all.flatMap((d) => Object.keys(d.metadata || {})),
-        ]),
-      ]),
-    );
-  }, [JSON.stringify(ids)]);
+  }, [JSON.stringify(ids), settings.metric, settings.xAxis]);
   const change = (p: Partial<ChartSettings>) =>
     setSettings((s) => ({ ...s, ...p }));
   const nonpositive = series.some((s) =>
@@ -119,11 +129,15 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   );
   return (
     <>
-      <div className="page-heading">
+      <div className="page-heading analysis-heading">
         <div>
           <span className="eyebrow">COMPARE & EXPORT</span>
           <h1>画图与列表</h1>
           <p>选择实验，比较结果。满意后下载 PNG 或导出 Markdown。</p>
+        </div>
+        <div className="analysis-view-switch" role="tablist" aria-label="画图与列表视图">
+          <button id="plot-tab" role="tab" aria-selected={view === "plot"} aria-controls="plot-panel" onClick={() => setView("plot")}>画图</button>
+          <button id="table-tab" role="tab" aria-selected={view === "table"} aria-controls="table-panel" onClick={() => setView("table")}>列表</button>
         </div>
         <details className="history-picker">
           <summary>
@@ -134,7 +148,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
               <p className="muted">先到历史管理导入实验。</p>
             ) : (
               <>
-                <button className="subtle" onClick={() => setIds(ids.length === history.length ? [] : history.map((h) => h.id))}>{ids.length === history.length ? "取消全选" : "全选"}</button>
+                <button className="subtle" onClick={() => setIds(history.every((h) => ids.includes(h.id)) ? [] : history.map((h) => h.id))}>{history.every((h) => ids.includes(h.id)) ? "取消全选" : "全选"}</button>
                 {history.map((h) => (
                   <label className="check" key={h.id}>
                     <input type="checkbox" checked={ids.includes(h.id)} onChange={(e) => setIds(e.target.checked ? [...ids, h.id] : ids.filter((id) => id !== h.id))} />
@@ -146,25 +160,17 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           </div>
         </details>
       </div>
-      <section className="panel">
-        <div className="panel-heading">
+      <section className="panel" id="plot-panel" role="tabpanel" aria-labelledby="plot-tab" hidden={view !== "plot"}>
+        <div className="panel-heading plot-toolbar">
           <h3>曲线对比</h3>
-          <button
-            className="primary"
-            disabled={!series.some((s) => s.points.length)}
-            onClick={() => downloadPng(orderedSeries, settings, appearance)}
-          >
-            <Download size={15} />
-            下载 PNG
-          </button>
-        </div>
-        <div className="toolbar">
           <label>
             指标
             <select
+              aria-label="指标"
               value={settings.metric}
               onChange={(e) =>
-                change({ metric: e.target.value, yLabel: e.target.value })
+                change({ metric: e.target.value, yLabel: e.target.value,
+                  yScale: e.target.value.toLowerCase().includes('ppl') ? 'logarithmic' : 'linear' })
               }
             >
               {metrics.map((m) => (
@@ -175,6 +181,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           <label>
             横轴
             <select
+              aria-label="横轴"
               value={settings.xAxis}
               onChange={(e) =>
                 change({
@@ -205,6 +212,14 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           <button onClick={() => setAdvanced(!advanced)}>
             <SlidersHorizontal size={15} />
             图表设置
+          </button>
+          <button
+            className="primary"
+            disabled={!series.some((s) => s.points.length)}
+            onClick={() => downloadPng(orderedSeries, settings, appearance)}
+          >
+            <Download size={15} />
+            下载 PNG
           </button>
         </div>
         {advanced && (
@@ -342,7 +357,9 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           </Empty>
         )}
       </section>
-      <TablePanel ids={ids} history={history} notify={notify} />
+      <div id="table-panel" role="tabpanel" aria-labelledby="table-tab" hidden={view !== "table"}>
+        <TablePanel ids={ids} history={history} notify={notify} metrics={metrics} />
+      </div>
     </>
   );
 }

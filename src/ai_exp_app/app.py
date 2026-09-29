@@ -31,8 +31,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     async def worker():
         while True:
-            await asyncio.sleep(1 if not runs.connection["last_checked"] else 8)
             await asyncio.to_thread(runs.refresh)
+            await asyncio.sleep(3)
+
+    async def history_worker():
+        while True:
+            await asyncio.sleep(15)
             try:
                 await asyncio.to_thread(sync_once, store, config.cache_root)
             except Exception as exc:
@@ -41,10 +45,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
         task = asyncio.create_task(worker())
+        history_task = asyncio.create_task(history_worker())
         yield
         task.cancel()
+        history_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+        with contextlib.suppress(asyncio.CancelledError):
+            await history_task
 
     app = FastAPI(title="AI 实验工作台", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.store, app.state.config, app.state.runs = store, config, runs

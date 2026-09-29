@@ -1,0 +1,13 @@
+{
+  "parameters": {
+    "training": {
+      "lr": 3,
+      "optimizer": "adamw",
+      "schedule": "cosine",
+      "enabled": true
+    },
+    "runtime": {
+      "gpu_count": 8
+    }
+  }
+}

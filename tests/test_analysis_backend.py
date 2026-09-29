@@ -44,6 +44,42 @@ def test_stopped_suffix_missing_data_escaping():
     result = render_table([record],columns)
     assert result['rows'][0][1] == '40 @1B'
     assert '\\|' in result['markdown'] and '&lt;script&gt;' in result['markdown']
+    assert '最后已记录进度' not in result['markdown']
+
+
+def test_extrema_positions_are_distinct_from_stop_and_delta_stays_numeric():
+    columns = [{'id':method,'kind':'metric','field':'val_ppl','aggregate':method,'title':method}
+               for method in ['min', 'max', 'final']]
+    columns.append({'id':'delta','kind':'metric_delta','parent_id':'min','title':'变化'})
+    base = {'id':'base','records':[{'metric':'val_ppl','tokens':1e9,'value':25}]}
+    record = {'id':'a','status':'stopped','stop_tokens':3.25e9,'records':[
+        {'metric':'val_ppl','tokens':0.05e9,'value':50},
+        {'metric':'val_ppl','tokens':1.5e9,'value':20},
+        {'metric':'val_ppl','tokens':3e9,'value':30}]}
+    result = render_table([record], columns, base)
+    assert result['rows'][0] == ['20 @1.5B', '-5', '50 @0.05B', '30 @3.25B']
+    assert '20 @1.5B' in result['markdown']
+
+
+def test_extrema_ties_choose_earliest_valid_position_and_missing_position_warns():
+    columns = [{'id':method,'kind':'metric','field':'val_ppl','aggregate':method,'title':method}
+               for method in ['min', 'max']]
+    record = {'id':'a','records':[
+        {'metric':'val_ppl','tokens':None,'value':20},
+        {'metric':'val_ppl','tokens':2e9,'value':20},
+        {'metric':'val_ppl','tokens':1.25e9,'value':20},
+        {'metric':'val_ppl','tokens':float('nan'),'value':50},
+        {'metric':'val_ppl','tokens':float('inf'),'value':50}]}
+    result = render_table([record], columns)
+    assert result['rows'][0] == ['20 @1.25B', '50']
+    assert any('max 缺少极值对应的 token 位置' in warning for warning in result['warnings'])
+
+
+def test_stopped_final_falls_back_to_last_recorded_progress():
+    columns = [{'id':'m','kind':'metric','field':'val_ppl','aggregate':'final','title':'末态'}]
+    record = {'id':'a','status':'stopped','records':[{'metric':'val_ppl','tokens':1.5e9,'value':40}]}
+    result = render_table([record], columns)
+    assert result['rows'][0] == ['40 @1.5B']
     assert '最后已记录进度' in result['markdown']
 
 

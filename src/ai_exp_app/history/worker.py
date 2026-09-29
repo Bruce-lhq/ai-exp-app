@@ -23,6 +23,8 @@ def sync_once(store, cache_root):
                 except (OSError, ValueError):
                     continue
             if existing:
+                if existing.get('status') != run.get('status'):
+                    existing['sync_status'] = 'pending'
                 existing['status'] = run.get('status', existing['status'])
                 existing['attempts'] = run.get('attempts', [])
                 existing['stop_tokens'] = run.get('stop_tokens')
@@ -37,6 +39,8 @@ def sync_once(store, cache_root):
         with run_lock(candidate['id']):
             record = store.get('history', candidate['id'])
             if not record or record.get('visibility') == 'removed' or record.get('remote_deleted'):
+                continue
+            if record.get('sync_status') == 'synced' and record.get('status') not in {'running', 'stopping', 'starting'}:
                 continue
             alias = record['source'].get('ssh_alias', 'gpu') if record['source']['kind'] == 'remote' else None
             if record.get('next_retry_at', 0) > time.time() or (alias and alias in failed_aliases):

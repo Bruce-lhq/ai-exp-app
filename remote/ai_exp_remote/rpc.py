@@ -44,6 +44,10 @@ def handle(request,root=None,start_daemon=True):
     if request.get('version')!=1:raise AgentError('PROTOCOL_VERSION','不支持的协议版本')
     op=request['operation'];p=request.get('payload',{})
     if op in READERS:return READERS[op](p)
+    if op == 'metric_series': return files.metric_series(p)
+    if op == 'read_log' and p.get('path'):
+        return files.read_file(dict(path=p['path'], name=p.get('name', 'train.log'),
+                                    offset=p.get('offset', 0), limit=p.get('limit', 65536)))
     if op == 'external_status':
         # Read terminal-managed GPU groups without importing them into the platform queue.
         completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
@@ -80,10 +84,7 @@ def handle(request,root=None,start_daemon=True):
             return previous['result']
         if op=='status':
             result={k:state[k] for k in ('revision','paused','queue','events')};result['runs']=list(state['runs'].values())
-            try: result['external_runs'] = external_runs(p.get('ssh_alias', 'gpu'))
-            except Exception as exc: result['external_runs'] = []; result['external_error'] = str(exc)
-            try:result['gpus']=gpu_status()
-            except Exception as exc:result['gpus']=[];result['gpu_error']=str(exc)
+            result['gpus'] = []
         elif op=='events':result=[e for e in state['events'] if e['seq']>p.get('after',0)]
         elif op=='request_status':result=state['requests'].get(p['request_id'])
         elif op=='read_log':
@@ -149,6 +150,12 @@ def handle(request,root=None,start_daemon=True):
             state['queue'].append(run['run_id']);emit(state,'accepted',run,{'resume':True});result=run
         else:raise AgentError('UNKNOWN_OPERATION','未知操作')
         if op in MUTATIONS:state['requests'][request_id]={'digest':digest,'result':json.loads(json.dumps(result))}
+    if op == 'status':
+        try: result['external_runs'] = external_runs(p.get('ssh_alias', 'gpu'))
+        except Exception as exc: result['external_runs'] = []; result['external_error'] = str(exc)
+        if p.get('include_gpus', True):
+            try: result['gpus'] = gpu_status()
+            except Exception as exc: result['gpu_error'] = str(exc)
     if start_daemon and (op in MUTATIONS or op=='status') and not (root.parent/'read-only').exists():ensure_daemon(root)
     return result
 

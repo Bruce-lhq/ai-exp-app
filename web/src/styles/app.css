@@ -691,8 +691,34 @@ main {
 }
 .chart {
   position: relative;
-  height: 380px;
+  width: 100%;
   padding: 20px;
+}
+.page-heading.analysis-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+.analysis-heading .history-picker {
+  justify-self: end;
+}
+.analysis-view-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f3f5f8;
+}
+.analysis-view-switch button {
+  min-width: 90px;
+  border: 0;
+  background: transparent;
+}
+.analysis-view-switch button[aria-selected="true"] {
+  background: white;
+  color: #2861dc;
+  box-shadow: 0 1px 4px #00000014;
 }
 .chart-controls {
   border-block: 1px solid var(--line);
@@ -700,6 +726,35 @@ main {
   background: #fafbfd;
   display: grid;
   gap: 13px;
+}
+.plot-toolbar {
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-block: 12px;
+}
+.plot-toolbar h3,
+.plot-toolbar button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.plot-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.plot-toolbar select {
+  width: 125px;
+  min-width: 0;
+}
+.plot-toolbar label:has(input) {
+  flex: 1;
+  min-width: 150px;
+}
+.plot-toolbar input {
+  width: 100%;
+  min-width: 0;
 }
 .chart-controls > div {
   display: flex;
@@ -1037,6 +1092,12 @@ details .check {
   .page-heading p {
     font-size: 11px;
   }
+  .analysis-heading > div:first-child {
+    grid-column: 1 / -1;
+  }
+  .analysis-heading .analysis-view-switch {
+    grid-column: 2;
+  }
   .split {
     grid-template-columns: 1fr;
   }
@@ -1084,7 +1145,6 @@ details .check {
     gap: 10px;
   }
   .chart {
-    height: 300px;
     padding: 10px;
   }
   .chart-controls > div {

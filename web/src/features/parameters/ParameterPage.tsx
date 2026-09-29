@@ -60,48 +60,65 @@ export function ParameterPage({
   const base = `/api/projects/${project}`;
   const [clean, setClean] = useState("");
   const generation = useRef(0);
+  const [loadedProject, setLoadedProject] = useState("");
   const dirty = JSON.stringify(params) !== clean || Object.values(errors).some(Boolean);
-  const pendingHistory = useRef(historical);
-  pendingHistory.current = historical;
-
   useEffect(() => {
-    if (historical && !busy && schema.length) {
-      setParams(structuredClone(historical));
+    if (!historical || busy || !schema.length || loadedProject !== project) return;
+    let alive = true;
+    const training = historical.training || historical;
+    const parameters = { training, runtime: historical.runtime || params.runtime };
+    api(`${base}/parameters/validate`, { parameters }).then((result) => {
+      if (!alive) return;
+      const next = result.parameters;
+      // Retain invalid imported values so they can be corrected instead of silently discarded.
+      for (const error of result.errors || []) {
+        if (error.field in training) next.training[error.field] = training[error.field];
+      }
+      setParams(next);
       setDraft({});
-      setErrors({});
-      setPreset("");
+      setErrors(Object.fromEntries((result.errors || []).map((error: any) => [error.field, error.message])));
+      setWarning((result.warnings || []).map((w: any) => `${w.field ? w.field + '：' : ''}${w.message || w}`).join('；'));
+      setPreset(""); setFilter(""); setDifference(false);
       onHistoricalLoaded?.();
-    }
-  }, [historical, busy, schema.length]);
+      notify(result.errors?.length ? "历史参数已载入，请修正标出的不兼容值" : "历史实验参数已载入编辑区");
+    }).catch((error) => { if (alive) notify(`参数载入失败：${error.message}`); });
+    return () => { alive = false; };
+  }, [historical, busy, schema, loadedProject, project]);
   useEffect(() => {
     api("/api/projects")
       .then((d) => {
         const p = items(d);
         setProjects(p);
-        setProject(p[0]?.id || "");
+        setProject(p.find((item) => item.is_default)?.id || p[0]?.id || "");
       })
       .catch((e) => notify(e.message));
   }, []);
   useEffect(() => {
     if (!project) return;
     setBusy(true);
+    setLoadedProject("");
+    setRefs([]);
     const requestGeneration = ++generation.current;
     let alive = true;
     (async () => {
-      const s = await api(`${base}/schema`, {});
-      const [p, i, d, c] = await Promise.all([
+      const s = await api(`${base}/schema`, { refresh: false });
+      const [p, i, d] = await Promise.all([
         api(`${base}/presets`), api(`${base}/editor-initial`),
-        api(`${base}/parameter-display`), api(`${base}/inspect`, {}).catch(() => ({}))
+        api(`${base}/parameter-display`),
       ]);
       if (!alive || generation.current !== requestGeneration) return;
       setSchema(s.fields || []); setPresets(items(p));
       const initial = {training:i.training || {}, runtime:i.runtime || {gpu_count:1}};
-      setParams(pendingHistory.current || initial); setClean(JSON.stringify(initial));
+      setParams(initial); setClean(JSON.stringify(initial));
       setDisplay(d || {}); setDraft({}); setErrors({}); setPreset("");
-      setRefs((c.branches || c.refs || []).map((x:any)=>typeof x === "string" ? x : x.name));
+      setLoadedProject(project);
       setCode(s.code?.ref || "");
       setWarning((s.warnings || []).map((x:any)=>x.message || x).join("；"));
     })().catch(e => {if(alive) notify(e.message)}).finally(()=>{if(alive)setBusy(false)});
+    api(`${base}/inspect`, {}, undefined, { background: true }).then((c) => {
+      if (alive && generation.current === requestGeneration)
+        setRefs((c.branches || c.refs || []).map((x: any) => typeof x === "string" ? x : x.name));
+    }).catch(() => {});
     return () => {alive = false};
   }, [project]);
   async function action(fn: () => Promise<void>) {
@@ -219,6 +236,13 @@ export function ParameterPage({
                   },
                 });
                 setSchema(s.fields);
+                const v = await api(`${base}/parameters/validate`, { parameters: params });
+                setWarning((v.warnings || []).map((w: any) => w.message || w).join("；"));
+                setErrors(Object.fromEntries((v.errors || []).map((error: any) => [error.field, error.message])));
+                if (!v.errors?.length) {
+                  setParams(v.parameters);
+                  setDraft({});
+                }
               });
             }}
           >
@@ -318,6 +342,7 @@ export function ParameterPage({
                             undefined,
                             "DELETE",
                           );
+                          if (preset === p.id) setPreset("");
                           setPresets(items(await api(`${base}/presets`)));
                         }
                       })
@@ -395,7 +420,7 @@ export function ParameterPage({
                             .filter((f) => f.has_default)
                             .map((f) => [f.key, f.default]),
                         ),
-                        runtime: { gpu_count: 1 },
+                        runtime: params.runtime,
                       });
                       setDraft({});
                       setErrors({});

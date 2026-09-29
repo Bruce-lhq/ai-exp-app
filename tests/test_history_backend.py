@@ -103,6 +103,7 @@ def test_sync_retry_keeps_cache_and_archive(setup, monkeypatch):
     store, cache, source, client = setup
     record = import_history(store, {'kind':'local','path':str(source)}, cache)
     record['visibility'] = 'archived'
+    record['sync_status'] = 'pending'
     store.put('history',record['id'],record)
     import ai_exp_app.history.worker as worker
     real_sync = worker.sync_history
@@ -142,3 +143,69 @@ def test_progress_regression_breaks_unknown_curve(setup):
     result = client.post('/api/analysis/series',json={'history_ids':[record['id']]}).json()
     assert result['series'][0]['points'][2]['y'] is None
     assert any('回退' in w for w in result['warnings'])
+
+
+def test_analysis_prefers_cached_history_for_external_run(setup, monkeypatch):
+    store, cache, source, client = setup
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache, name='备注实验')
+    store.put('runs', record['id'], {
+        'id': record['id'], 'external': True, 'remote_path': '/remote/run',
+        'ssh_alias': 'gpu', 'display_name': '远端原始名',
+    })
+    import ai_exp_app.analysis.api as analysis_api
+    monkeypatch.setattr(analysis_api, 'remote', lambda *args, **kwargs: (_ for _ in ()).throw(ConnectionError('offline')))
+    result = client.post('/api/analysis/series', json={
+        'history_ids': [record['id']], 'metric': 'val_ppl',
+    }).json()
+    assert result['series'][0]['name'] == '备注实验'
+    assert result['series'][0]['points'][0]['y'] == 42
+
+
+def test_parameter_cell_saved_to_cache_and_preserved_after_refresh(setup):
+    store, cache, source, client = setup
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
+    endpoint = f"/api/history/{record['id']}/parameters"
+    response = client.patch(endpoint, json={'field': 'lr', 'value': '  arbitrary | 字符串  '})
+    assert response.status_code == 200
+    assert json.loads((Path(record['cache_dir']) / 'args.json').read_text())['lr'] == 'arbitrary | 字符串'
+    assert json.loads((source / 'args.json').read_text())['lr'] == .001
+    assert client.post('/api/history/refresh').status_code == 200
+    assert json.loads((Path(record['cache_dir']) / 'args.json').read_text())['lr'] == 'arbitrary | 字符串'
+    table = client.post('/api/analysis/table', json={'history_ids': [record['id']], 'columns': [
+        {'id': 'lr', 'kind': 'parameter', 'field': 'lr', 'title': '学习率'}]}).json()
+    assert table['rows'][0][0] == 'arbitrary | 字符串'
+
+
+def test_analysis_missing_cache_never_reads_remote(setup, monkeypatch):
+    store, cache, source, client = setup
+    store.put('runs', 'uncached', {'id': 'uncached', 'external': True})
+    import ai_exp_app.analysis.api as analysis_api
+    def offline(*args, **kwargs):
+        raise AssertionError('分析页不应访问云端')
+    monkeypatch.setattr(analysis_api, 'remote', offline)
+    response = client.post('/api/analysis/series', json={'history_ids': ['uncached']})
+    assert response.status_code == 200
+    assert response.json()['series'] == []
+    assert response.json()['warnings']
+
+
+def test_parsed_cache_reused_and_invalidated_by_local_refresh(setup, monkeypatch):
+    store, cache, source, client = setup
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
+    import ai_exp_app.analysis.api as analysis_api
+    original = analysis_api.read_metrics
+    reads = []
+    def counted(*args):
+        reads.append(args[0])
+        return original(*args)
+    monkeypatch.setattr(analysis_api, 'read_metrics', counted)
+    payload = {'history_ids': [record['id']], 'metric': 'val_ppl'}
+    first = client.post('/api/analysis/series', json=payload).json()
+    assert 'val_ppl' in first['metrics']
+    client.post('/api/analysis/series', json=payload)
+    assert len(reads) == 1
+    (source / 'metrics.jsonl').write_text('{"event":"validation","tokens_seen":200,"perplexity":35}\n')
+    client.post('/api/history/refresh')
+    updated = client.post('/api/analysis/series', json=payload).json()
+    assert updated['series'][0]['points'][0]['y'] == 35
+    assert len(reads) == 2
