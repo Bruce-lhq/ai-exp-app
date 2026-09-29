@@ -72,6 +72,23 @@ def handle(request,root=None,start_daemon=True):
                               ssh_alias=p.get('ssh_alias','gpu'), **info))
         return {'runs': items, 'source': 'gpu-groups'}
     root=Path(root or ROOT);store=Store(root)
+    if op in ('adopt_external','pause_external'):
+        from . import adoption
+        with store.transaction() as state:
+            records = state.setdefault('adoptions', {})
+            identity = p.get('run_id')
+            record = records.get(identity)
+            if op == 'adopt_external':
+                run = next((r for r in external_runs() if r['id'] == identity), None)
+                if not run:raise AgentError('RUN_NOT_FOUND','实验不在终端 GPU 分组中')
+                record = dict(adoption.discover(run['remote_path']), id=identity)
+                records[identity] = record
+            else:
+                if p.get('confirmed') is not True:raise AgentError('CONFIRM_REQUIRED','暂停实验需要确认')
+                if not record:raise AgentError('NOT_ADOPTED','请先接管实验')
+                if record['status'] not in ('stopping','paused'):
+                    adoption.pause(record)
+            return {'id': identity, 'adopted': True, 'status': record['status']}
     if op=='gpus':return gpu_status()
     if op in MUTATIONS and (root.parent/'read-only').exists():raise AgentError('READ_ONLY','远端组件尚未启用实验运行')
     digest=hashlib.sha256(json.dumps({'operation':op,'payload':p},sort_keys=True,allow_nan=False).encode()).hexdigest()
@@ -157,6 +174,26 @@ def handle(request,root=None,start_daemon=True):
     if op == 'status':
         try: result['external_runs'] = external_runs(p.get('ssh_alias', 'gpu'))
         except Exception as exc: result['external_runs'] = []; result['external_error'] = str(exc)
+        from . import adoption
+        with store.transaction() as state:
+            records = state.get('adoptions', {})
+            table = adoption.processes() if records else {}
+            for record in records.values():
+                adoption.observe(record, table)
+                run = next((r for r in result['external_runs'] if r['id'] == record['id']), None)
+                if run is None:
+                    run = dict(id=record['id'], external=True, remote_path=record['remote_path'],
+                               display_name=Path(record['remote_path']).name)
+                    result['external_runs'].append(run)
+                if not adoption.same(record['launcher'], table.get(record['launcher']['pid'])):
+                    try:
+                        adoption.discover(record['remote_path'], table)
+                    except AgentError:
+                        pass
+                    else:
+                        run.update(status='external_running', adopted=False)
+                        continue
+                run.update(status=record['status'], adopted=True, stop_tokens=record.get('stop_tokens'))
         if p.get('include_gpus', True):
             try: result['gpus'] = gpu_status()
             except Exception as exc: result['gpu_error'] = str(exc)

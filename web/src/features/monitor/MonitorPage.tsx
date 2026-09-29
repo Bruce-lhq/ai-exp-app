@@ -20,6 +20,7 @@ export const statusNames: Record<string, string> = {
   stopping: "停止中",
   accepted: "已提交",
   external_running: "终端启动",
+  external_exited: "进程已退出",
 };
 let lastRuns: Run[] = [];
 let lastQueue: any = { runs: [], paused: false };
@@ -296,7 +297,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
                 </button>
                 </>
               )}
-              {runs.find((x) => x.id === selected)?.status === "external_running" && <><button disabled title="终端实验尚未接管，无法验证进程身份">暂停实验</button><span className="muted">由终端启动，工作台仅监控；暂停需先接管实验</span></>}
+              {runs.find((x) => x.id === selected)?.status === "external_running" && (runs.find((x) => x.id === selected)?.adopted
+                ? <button onClick={() => { setStopAction('pause'); setPauseAlso(false); setStop(selected); }}><Pause size={14} />暂停实验</button>
+                : <button onClick={() => action(async () => { await api(`/api/runs/${selected}/adopt`, {}); notify('进程身份已验证并接管，训练继续运行'); })}>接管进程</button>)}
             </div>
           </div>
           <details open>
@@ -307,15 +310,16 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       )}
       {stop && (
         <Modal title={stopAction === "pause" ? "暂停实验？" : "停止实验？"} close={() => setStop("")}>
-          <p>当前训练进程将退出并释放 GPU，不额外保存 checkpoint。之后请从页面上方的“严格续跑”入口恢复，最近 checkpoint 之后的进度需要重跑。</p>
-          <label className="check">
+          <p>当前训练进程将退出并释放 GPU，不额外保存 checkpoint。最近 checkpoint 之后的进度需要重跑。</p>
+          {runs.find((r) => r.id === stop)?.external && <p className="warning">这是终端启动的实验。暂停后暂不能通过工作台续跑；外部 checkpoint 续跑入口尚待接入。外部启动脚本的后续任务不会由工作台暂停。</p>}
+          {!runs.find((r) => r.id === stop)?.external && <label className="check">
             <input
               type="checkbox"
               checked={pauseAlso}
               onChange={(e) => setPauseAlso(e.target.checked)}
             />
             同时暂停后续队列
-          </label>
+          </label>}
           <footer>
             <button onClick={() => setStop("")}>取消</button>
             <button

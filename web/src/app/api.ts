@@ -92,4 +92,5 @@ export type Run = {
   remaining?: string;
   queue_name?: string;
   external?: boolean;
+  adopted?: boolean;
 };
