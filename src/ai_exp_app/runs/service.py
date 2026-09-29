@@ -148,6 +148,19 @@ class RunService:
             self.refresh()
             return result
 
+        @router.post("/runs/{id}/pause")
+        def pause_run(id: str, body: dict):
+            item = self.run(id)
+            if body.get("confirmed") is not True:
+                raise HTTPException(409, "暂停实验需要确认")
+            if item.get("external"):
+                raise HTTPException(409, "终端启动的实验尚未接管，不能由工作台暂停")
+            result = remote(item.get("ssh_alias", self.alias()), "pause", {
+                "run_id": id, "confirmed": True, "pause_queue": bool(body.get("pause_queue"))
+            }, body.get("request_id"))
+            self.refresh()
+            return result
+
         @router.post("/runs/{id}/resume")
         def resume(id: str, body: dict = {}):
             item = self.run(id)

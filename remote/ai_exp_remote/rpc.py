@@ -17,7 +17,7 @@ from .state import AgentError,Store,emit
 
 ROOT=Path(os.environ.get('AI_EXP_REMOTE_ROOT','/your_exp/ai_exp_app/state'))
 READERS={'list_directory':files.list_directory,'inspect_project':projects.inspect_project,'read_schema':projects.read_schema,'inspect_files':files.inspect_files,'read_file':files.read_file,'file_manifest':files.file_manifest,'read_file_chunk':files.read_file_chunk}
-MUTATIONS={'submit','stop','resume','queue_order','queue_pause','queue_resume','queue_remove','delete_preview','delete_confirm'}
+MUTATIONS={'submit','stop','pause','resume','queue_order','queue_pause','queue_resume','queue_remove','delete_preview','delete_confirm'}
 
 def external_runs(alias='gpu'):
     completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
@@ -132,10 +132,14 @@ def handle(request,root=None,start_daemon=True):
             result=deletion.preview(p,state) if op=='delete_preview' else deletion.confirm(p,state)
         elif op in ('queue_pause','queue_resume'):
             state['paused']=op=='queue_pause';emit(state,'queue_paused' if state['paused'] else 'queue_resumed');result={'paused':state['paused']}
-        elif op=='stop':
+        elif op in ('stop','pause'):
             if p.get('confirmed') is not True:raise AgentError('CONFIRM_REQUIRED','停止实验需要确认')
-            run=state['runs'][p['run_id']]
+            run=state['runs'].get(p['run_id'])
+            if not run:raise AgentError('RUN_NOT_FOUND','此实验未由工作台管理，不能暂停或停止')
+            if op=='pause' and run['status'] not in ('running','starting','stopping','paused'):
+                raise AgentError('PAUSE_STATE','仅允许暂停正在运行的实验')
             if run['status'] in ('queued','running','starting'):
+                run['stop_reason']='pause' if op=='pause' else 'stop'
                 if p.get('pause_queue'):state['paused']=True;emit(state,'queue_paused',run)
                 run['stop_requested']=time.time();emit(state,'stop_requested',run)
                 if run['status']=='queued':state['queue'].remove(run['run_id']);run['status']='stopped';emit(state,'stopped',run)
@@ -143,10 +147,10 @@ def handle(request,root=None,start_daemon=True):
             result=run
         elif op=='resume':
             run=state['runs'][p['run_id']]
-            if run['status'] not in ('failed','stopped'):raise AgentError('RESUME_STATE','仅允许续跑停止或失败的实验')
+            if run['status'] not in ('failed','stopped','paused'):raise AgentError('RESUME_STATE','仅允许续跑已暂停、停止或失败的实验')
             check_start(state,p.get('mode','queue'),run['gpu_count'])
             validate_checkpoint(run)
-            run['resume_path']=str(Path(run['remote_path'])/'latest.pt');run['status']='queued';run['stop_requested']=None
+            run['resume_path']=str(Path(run['remote_path'])/'latest.pt');run['status']='queued';run['stop_requested']=None;run.pop('stop_reason',None)
             state['queue'].append(run['run_id']);emit(state,'accepted',run,{'resume':True});result=run
         else:raise AgentError('UNKNOWN_OPERATION','未知操作')
         if op in MUTATIONS:state['requests'][request_id]={'digest':digest,'result':json.loads(json.dumps(result))}

@@ -53,3 +53,30 @@ def test_stopped_tokens_and_attempt_boundary(tmp_path,monkeypatch):
     monkeypatch.setattr(runtime,'gpu_status',lambda:[])
     runtime.tick(store)
     with store.transaction() as state:assert state['runs']['r']['stop_tokens']==120000000
+
+def test_pause_confirm_exit_and_unified_resume(tmp_path, monkeypatch):
+    from ai_exp_remote import rpc
+    from ai_exp_remote.state import AgentError
+    store = Store(tmp_path/'state')
+    run = sample(tmp_path)
+    run.update(status='running', attempt_id='attempt', attempt_started_at=0)
+    with store.transaction() as state:
+        state['runs']['r'] = run
+    def request(op, payload, identity):
+        return rpc.handle(dict(version=1, request_id=identity, operation=op, payload=payload), store.root, False)
+    with pytest.raises(AgentError):
+        request('pause', {'run_id':'r'}, 'unconfirmed')
+    assert request('pause', {'run_id':'r','confirmed':True}, 'pause')['status'] == 'stopping'
+    folder = store.root/'attempts/attempt'
+    folder.mkdir(parents=True)
+    atomic_json(folder/'exit.json', {'exit_code':-15})
+    monkeypatch.setattr(runtime, 'gpu_status', lambda: [])
+    runtime.tick(store)
+    with store.transaction() as state:
+        assert state['runs']['r']['status'] == 'paused'
+        assert not state['queue']
+    monkeypatch.setattr(rpc, 'validate_checkpoint', lambda run: None)
+    assert request('resume', {'run_id':'r'}, 'resume')['status'] == 'queued'
+    with store.transaction() as state:
+        assert state['queue'] == ['r']
+        assert 'stop_reason' not in state['runs']['r']
