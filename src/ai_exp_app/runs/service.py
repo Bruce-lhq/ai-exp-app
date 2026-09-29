@@ -36,7 +36,7 @@ class RunService:
         if not self.store.list("projects") and not self.store.list("runs"):
             return
         try:
-            result = remote(self.alias(), "status", {})
+            result = remote(self.alias(), "status", {'include_gpus': False})
             self.snapshot = result
             self.connection = {"connected": True, "error": None, "last_checked": time.time()}
             runs = result.get("runs", [])
@@ -73,6 +73,19 @@ class RunService:
             raise HTTPException(404, "实验不存在")
         return run
 
+    def display_run(self, run, history):
+        identity = run.get('id') or run.get('run_id')
+        candidates = [h for h in history if h.get('visibility') != 'removed']
+        saved = next((h for h in candidates if h['id'] == identity or h.get('run_id') == identity), None)
+        if saved is None:
+            path = (run.get('remote_path') or run.get('run_dir') or '').rstrip('/')
+            saved = next((h for h in candidates if path
+                          and h.get('source', {}).get('kind') == 'remote'
+                          and h['source'].get('path', '').rstrip('/') == path
+                          and h['source'].get('ssh_alias', 'gpu') == run.get('ssh_alias', 'gpu')), None)
+        name = (saved or {}).get('display_name') or (saved or {}).get('name')
+        return {**run, 'display_name': name} if name else run
+
     def create_router(self):
         router = APIRouter(prefix="/api")
 
@@ -87,11 +100,12 @@ class RunService:
 
         @router.get("/runs")
         def runs():
-            return self.store.list("runs")
+            history = self.store.list('history')
+            return [self.display_run(run, history) for run in self.store.list("runs")]
 
         @router.get("/runs/{id}")
         def run(id: str):
-            return self.run(id)
+            return self.display_run(self.run(id), self.store.list('history'))
 
         @router.post("/runs", status_code=201)
         def submit(body: dict):
@@ -156,7 +170,8 @@ class RunService:
         def queue():
             items = self.snapshot.get("queue", [])
             values = [self.store.get("runs", x) if isinstance(x, str) else x for x in items]
-            return {"runs": [v for v in values if v], "paused": self.snapshot.get("paused", False), "revision": self.snapshot.get("revision", 0)}
+            history = self.store.list('history')
+            return {"runs": [self.display_run(v, history) for v in values if v], "paused": self.snapshot.get("paused", False), "revision": self.snapshot.get("revision", 0)}
 
         @router.put("/queue/order")
         def reorder(body: dict):

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from .importer import enrich, import_history
 from .paths import export_basename
-from .sync import ALLOWED_FILES, run_lock, rpc, sync_history
+from .sync import ALLOWED_FILES, run_lock, rpc, sync_history, apply_parameter_overrides
 
 
 def create_router(store, cache_root: Path):
@@ -55,6 +55,21 @@ def create_router(store, cache_root: Path):
                                  'sync_status': 'pending', 'sync_error': str(exc)})
         return {'count': len(imported), 'items': imported}
 
+    @router.post('/api/history/refresh')
+    def refresh_history():
+        warnings = []
+        for candidate in store.list('history'):
+            if candidate.get('visibility') in {'removed', 'tracking'} or candidate.get('remote_deleted'):
+                continue
+            with run_lock(candidate['id']):
+                record = get(candidate['id'])
+                try:
+                    record.update(sync_history(record, cache_root))
+                    store.put('history', record['id'], record)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    warnings.append(f"{record['name']}：{exc}")
+        return {'warnings': warnings}
+
     @router.patch('/api/history/{identity}')
     def update(identity: str, body: dict):
         with run_lock(identity):
@@ -83,6 +98,20 @@ def create_router(store, cache_root: Path):
                     raise HTTPException(422, '无效可见性')
                 record['visibility'] = visibility
             return store.put('history', identity, record)
+
+    @router.patch('/api/history/{identity}/parameters')
+    def edit_parameter(identity: str, body: dict):
+        with run_lock(identity):
+            record = get(identity)
+            field, value = body.get('field'), body.get('value')
+            if not isinstance(field, str) or not field or not isinstance(value, str):
+                raise HTTPException(422, '参数名称和值必须为字符串')
+            root = Path(record['cache_dir'])
+            if not root.resolve().is_relative_to(cache_root) or (root / 'args.json').is_symlink():
+                raise HTTPException(409, '缓存路径异常')
+            record.setdefault('parameter_overrides', {})[field] = value.strip()
+            apply_parameter_overrides(record)
+            return store.put('history', identity, enrich(record))
 
     @router.delete('/api/history/{identity}')
     @router.post('/api/history/{identity}/remove')

@@ -15,10 +15,12 @@ export function TablePanel({
   ids,
   history,
   notify,
+  metrics = ["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms"],
 }: {
   ids: string[];
   history: any[];
   notify: (s: string) => void;
+  metrics?: string[];
 }) {
   const [templates, setTemplates] = useState<any[]>([]),
     [template, setTemplate] = useState(""),
@@ -36,6 +38,14 @@ export function TablePanel({
     [difference, setDifference] = useState(false),
     [parameterChoice, setParameterChoice] = useState("");
   const [templateLoaded, setTemplateLoaded] = useState(false);
+  const [metricChoice, setMetricChoice] = useState("val_ppl");
+  const [parameterEdits, setParameterEdits] = useState<Record<string, Record<string, string>>>({});
+  const [parameterRevision, setParameterRevision] = useState(0);
+  function parameterText(identity: string, field: string) {
+    const parameters = history.find((h) => h.id === identity)?.parameters || {};
+    const value = parameterEdits[identity]?.[field] ?? parameters[field] ?? parameters.training?.[field] ?? parameters.runtime?.[field];
+    return value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  }
   const parameterFields = [...new Set(history.flatMap((h) => Object.keys(h.parameters?.training || h.parameters || {})))];
   const [rowOrder, setRowOrder] = useState<string[]>(ids), [rowDrag, setRowDrag] = useState(0);
   const orderedIds = baseline
@@ -75,7 +85,7 @@ export function TablePanel({
           .filter((h) => ids.includes(h.id))
           .map((h) =>
             JSON.stringify(
-              h.parameters?.training?.[c.field || ""] ??
+              parameterEdits[h.id]?.[c.field || ""] ?? h.parameters?.training?.[c.field || ""] ??
                 h.parameters?.[c.field || ""],
             ),
           ),
@@ -96,7 +106,17 @@ export function TablePanel({
     return () => {
       alive = false;
     };
-  }, [JSON.stringify(orderedIds), baseline, JSON.stringify(effective)]);
+  }, [JSON.stringify(orderedIds), baseline, JSON.stringify(effective), parameterRevision]);
+  async function saveParameter(identity: string, field: string, value: string) {
+    try {
+      await api(`/api/history/${identity}/parameters`, { field, value }, "PATCH");
+      setParameterEdits((current) => ({ ...current, [identity]: { ...current[identity], [field]: value.trim() } }));
+      setParameterRevision((value) => value + 1);
+      notify("已保存到本地 args.json");
+    } catch (error) {
+      notify(`保存失败：${(error as Error).message}`);
+    }
+  }
   async function save(asNew: boolean) {
     try {
       const name = asNew
@@ -122,7 +142,7 @@ export function TablePanel({
   function add(kind: string) {
     const field =
       kind === "metric"
-        ? prompt("指标原始名称", "val_ppl")
+        ? metricChoice
         : null;
     if ((kind === "metric" || kind === "parameter") && !field) return;
     const id = crypto.randomUUID();
@@ -130,9 +150,9 @@ export function TablePanel({
       id,
       kind,
       field: field || undefined,
-      aggregate: kind === "metric" ? "min" : undefined,
+      aggregate: kind === "metric" ? (field === "tokens_per_second" ? "final" : "min") : undefined,
       title:
-        field ||
+        (field === "tokens_per_second" ? "速度 (K tok/s)" : field) ||
         {
           notes: "备注",
           parameter_count: "参数量",
@@ -329,7 +349,10 @@ export function TablePanel({
               <Plus size={14} />
               增加超参数列
             </button>
-            <button onClick={() => add("metric")}>指标与差值</button>
+            <select aria-label="选择指标列" value={metricChoice} onChange={(e) => setMetricChoice(e.target.value)}>
+              {[...new Set([...metrics, "tokens_per_second"])].map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (K tok/s)" : metric}</option>)}
+            </select>
+            <button onClick={() => add("metric")}>增加指标与差值</button>
             <button onClick={() => add("notes")}>备注列</button>
             <button onClick={() => save(false)}>
               <Save size={14} />
@@ -359,7 +382,20 @@ export function TablePanel({
               <tr key={orderedIds[i] || i} draggable onDragStart={() => setRowDrag(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => setRowOrder(move(orderedIds, rowDrag, i))}>
                 <td className="drag-cell"><GripVertical size={14} /></td>
                 {row.map((cell: any, j: number) => (
-                  <td key={j}>{cell ?? "—"}</td>
+                  <td key={j}>{effective[j]?.kind === "parameter" ? (
+                    <input
+                      key={`${orderedIds[i]}:${effective[j].field}:${cell}`}
+                      aria-label={`${history.find((h) => h.id === orderedIds[i])?.name || orderedIds[i]} ${effective[j].title}`}
+                      defaultValue={parameterText(orderedIds[i], effective[j].field!)}
+                      onBlur={(e) => {
+                        const value = e.target.value.trim();
+                        e.target.value = value;
+                        if (value !== parameterText(orderedIds[i], effective[j].field!))
+                          void saveParameter(orderedIds[i], effective[j].field!, value);
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    />
+                  ) : cell ?? "—"}</td>
                 ))}
               </tr>
             ))}

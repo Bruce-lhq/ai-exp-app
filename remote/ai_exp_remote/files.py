@@ -1,8 +1,64 @@
 from pathlib import Path
+import json
+import math
 from .projects import directory
 from .state import AgentError
 
 ALLOWED = {'args.json','metrics.jsonl','train.log','launch.log','environment.json','run.json','meta.json','model_config.json','final_ca_stats.json','final_ca_stats_eval.log'}
+
+def ca_window_metrics(values):
+    # Same window mean as the local reader and plot_metric.py.
+    result = {}
+    for name, suffixes in {'R_min': ('Rmin', 'R_min'), 'R_mean': ('Rmean', 'R_mean'),
+                           'update_rms': ('update_rms',)}.items():
+        if name in values: continue
+        direct = next((values[key] for key in suffixes if key in values), None)
+        samples = [value for key, value in values.items()
+                   if key.startswith('ca/') and key.rsplit('/', 1)[-1] in suffixes
+                   and isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)]
+        if isinstance(direct, (int, float)) and not isinstance(direct, bool) and math.isfinite(direct):
+            result[name] = direct
+        elif samples:
+            result[name] = sum(samples) / len(samples)
+    return result
+
+def metric_series(payload):
+    metric, axis = payload.get('metric', 'val_ppl'), payload.get('axis', 'tokens')
+    if axis not in {'tokens', 'step', 'elapsed_s'}:
+        raise AgentError('AXIS', '无效横轴')
+    result = {}
+    for run in payload.get('runs', []):
+        points, available, warnings = [], set(), []
+        try:
+            path = directory(run['path']) / 'metrics.jsonl'
+            if path.is_symlink():
+                raise AgentError('FILE_NOT_ALLOWED', '拒绝读取符号链接')
+            with path.open(errors='replace') as stream:
+                for line in stream:
+                    try: item = json.loads(line)
+                    except ValueError: continue
+                    if not isinstance(item, dict): continue
+                    event = str(item.get('event', item.get('type', ''))).lower()
+                    values = dict(item)
+                    if isinstance(item.get('metrics'), dict): values.update(item['metrics'])
+                    if event in {'train', 'training'}: values.update(ca_window_metrics(values))
+                    x_keys = {'tokens': ('tokens_seen', 'total_tokens', 'global_tokens', 'tokens'),
+                              'step': ('step', 'global_step', 'optimizer_step'),
+                              'elapsed_s': ('elapsed_s', 'elapsed_seconds')}[axis]
+                    x = next((item[k] for k in x_keys if isinstance(item.get(k), (int, float))), None)
+                    for key, value in values.items():
+                        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value): continue
+                        name = key
+                        if key in {'perplexity', 'ppl', 'loss'}:
+                            prefix = 'val' if event in {'validation', 'val', 'eval', 'evaluation'} else 'train' if event in {'train', 'training'} else None
+                            if prefix: name = prefix + '_' + ('ppl' if key in {'perplexity', 'ppl'} else key)
+                        available.add(name)
+                        if name == metric and isinstance(x, (int, float)) and math.isfinite(x):
+                            points.append({'x': x, 'y': value})
+        except (OSError, AgentError) as exc:
+            warnings.append(str(exc))
+        result[run['id']] = {'points': points, 'metrics': sorted(available), 'warnings': warnings}
+    return result
 
 def list_directory(payload):
     path=directory(payload['path'])

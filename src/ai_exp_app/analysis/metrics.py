@@ -5,6 +5,24 @@ from .trajectory import effective_trajectory
 AXES = {'tokens', 'tokens_seen', 'total_tokens', 'global_tokens', 'step', 'global_step', 'elapsed_s', 'elapsed_seconds', 'time', 'timestamp', 'rank', 'epoch', 'optimizer_step', 'data_step'}
 
 
+def ca_window_metrics(values):
+    """Match plot_metric.py: mean of the per-layer/per-call window statistics."""
+    result = {}
+    for name, suffixes in {'R_min': ('Rmin', 'R_min'), 'R_mean': ('Rmean', 'R_mean'),
+                           'update_rms': ('update_rms',)}.items():
+        if name in values:
+            continue
+        direct = next((values[key] for key in suffixes if key in values), None)
+        samples = [value for key, value in values.items()
+                   if key.startswith('ca/') and key.rsplit('/', 1)[-1] in suffixes
+                   and isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)]
+        if isinstance(direct, (int, float)) and not isinstance(direct, bool) and math.isfinite(direct):
+            result[name] = direct
+        elif samples:
+            result[name] = sum(samples) / len(samples)
+    return result
+
+
 def read_metrics(path, run_id='', attempts=None):
     records, warnings, metadata = [], [], {}
     parameter_count = None
@@ -33,6 +51,8 @@ def read_metrics(path, run_id='', attempts=None):
             values = dict(item)
             if isinstance(item.get('metrics'), dict):
                 values.update(item['metrics'])
+            if event in {'train', 'training'}:
+                values.update(ca_window_metrics(values))
             for key, value in values.items():
                 if key in AXES or key in {'parameter_count', 'num_parameters', 'num_params', 'total_params', 'n_params', 'total_parameters', 'trainable_parameters'} or isinstance(value, bool) or not isinstance(value, (int, float)):
                     continue

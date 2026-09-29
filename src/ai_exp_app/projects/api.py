@@ -54,7 +54,8 @@ def create_router(store):
 
     @router.get("/projects")
     def projects():
-        return [p for p in store.list("projects") if p.get("favorite", True)]
+        default = (store.get('preferences', 'workspace') or {}).get('default_project_id')
+        return [{**p, 'is_default': p['id'] == default} for p in store.list("projects") if p.get("favorite", True)]
 
     @router.post("/projects", status_code=201)
     def create_project(body: dict):
@@ -75,6 +76,9 @@ def create_router(store):
                 item[key] = body[key]
         if not str(item["name"]).strip():
             raise HTTPException(422, "项目名不能为空")
+        if body.get('is_default') is True:
+            preferences = store.get('preferences', 'workspace') or {}
+            store.put('preferences', 'workspace', {**preferences, 'default_project_id': id})
         return store.put("projects", id, item)
 
     @router.delete("/projects/{id}")
@@ -94,7 +98,7 @@ def create_router(store):
 
     @router.post("/projects/{id}/schema")
     def schema(id: str, body: dict = {}):
-        return schema_for(store, id, body.get("code"), refresh=True)
+        return schema_for(store, id, body.get("code"), refresh=body.get('refresh', True))
 
     @router.get("/projects/{id}/presets")
     def presets(id: str):

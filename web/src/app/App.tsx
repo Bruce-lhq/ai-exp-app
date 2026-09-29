@@ -20,6 +20,10 @@ export default function App() {
     [connection, setConnection] = useState<any>({ connected: false }),
     [historical, setHistorical] = useState<Parameters | null>(null);
   const [loading, setLoading] = useState(0);
+  const [configureVisited, setConfigureVisited] = useState(false);
+  useEffect(() => {
+    if (page === "configure") setConfigureVisited(true);
+  }, [page]);
   const [notices,setNotices]=useState<any[]>([]),[noticeOpen,setNoticeOpen]=useState(false);
   const seen=useRef(new Set<string>());
   const notify = (m: string) => setMessage(m);
@@ -124,16 +128,16 @@ export default function App() {
             </button>
           </div>
         </header>
-        {noticeOpen&&<section className="panel notifications"><div className="panel-heading"><h3>实验通知</h3><button onClick={async()=>{if("Notification" in window){const p=await Notification.requestPermission();notify(p==='granted'?'系统通知已启用':'系统通知未授权')}}}>启用系统通知</button></div>{notices.length?notices.map(n=><button className="run-row" key={n.id} onClick={async()=>{await api(`/api/notifications/${n.id}/read`,{});setNotices(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x));history.replaceState(null,'',`?run=${encodeURIComponent(n.run_id)}`);setPage('monitor');setNoticeOpen(false)}}><span><strong>{n.title}</strong><small>{n.body}</small></span><span>{n.read?'已读':'未读'}</span></button>):<p className="empty">暂无实验通知</p>}</section>}
+        {noticeOpen&&<section className="panel notifications"><div className="panel-heading"><h3>实验通知</h3><button onClick={async()=>{try{if("Notification" in window){const p=await Notification.requestPermission();notify(p==='granted'?'系统通知已启用':'系统通知未授权')}}catch(e){notify((e as Error).message)}}}>启用系统通知</button></div>{notices.length?notices.map(n=><button className="run-row" key={n.id} onClick={async()=>{try{await api(`/api/notifications/${n.id}/read`,{});setNotices(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x));history.replaceState(null,'',`?run=${encodeURIComponent(n.run_id)}`);setPage('monitor');setNoticeOpen(false)}catch(e){notify((e as Error).message)}}}><span><strong>{n.title}</strong><small>{n.body}</small></span><span>{n.read?'已读':'未读'}</span></button>):<p className="empty">暂无实验通知</p>}</section>}
         <main>
-          <div hidden={page !== "configure"}>
+          {(page === "configure" || configureVisited) && <div hidden={page !== "configure"}>
             <ParameterPage
               notify={notify}
               onRun={() => setPage("monitor")}
               historical={historical}
               onHistoricalLoaded={() => setHistorical(null)}
             />
-          </div>
+          </div>}
           {page === "monitor" && <MonitorPage notify={notify} />}{" "}
           {page === "history" && (
             <HistoryPage
@@ -141,7 +145,6 @@ export default function App() {
               onLoad={(p) => {
                 setHistorical(p);
                 setPage("configure");
-                notify("历史实验参数已载入编辑区");
               }}
             />
           )}
@@ -161,7 +164,7 @@ export default function App() {
           </button>
         </div>
       )}
-      {loading > 0 && <div className="loading-overlay" role="status" aria-label="正在加载"><span className="spinner" /> 正在从云端更新…</div>}
+      {page !== "analysis" && loading > 0 && <div className="loading-overlay" role="status" aria-label="正在加载"><span className="spinner" /> 正在加载…</div>}
     </div>
   );
 }

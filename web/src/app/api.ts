@@ -2,21 +2,31 @@ export async function api<T = any>(
   path: string,
   body?: unknown,
   method?: string,
+  options: { background?: boolean; signal?: AbortSignal } = {},
 ): Promise<T> {
   const requestMethod = method || (body === undefined ? "GET" : "POST");
   const payload = body === undefined && requestMethod !== "GET" ? {} : body;
-  window.dispatchEvent(new CustomEvent("ai-exp-loading", { detail: 1 }));
+  const local = path.startsWith("/api/analysis/") && !(body as any)?.live_ids?.length ||
+    path.startsWith("/api/templates") || path.startsWith("/api/notifications") ||
+    path === "/api/connection" ||
+    (path.startsWith("/api/history") && requestMethod === "GET");
+  const loading = (delta: number) => {
+    if (!local && !options.background && typeof window !== "undefined")
+      window.dispatchEvent(new CustomEvent("ai-exp-loading", { detail: delta }));
+  };
+  loading(1);
   let response: Response;
   try {
     response = await fetch(path, {
       method: requestMethod,
       credentials: "same-origin",
+      signal: options.signal,
       headers:
         payload === undefined ? undefined : { "Content-Type": "application/json" },
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
   } finally {
-    window.dispatchEvent(new CustomEvent("ai-exp-loading", { detail: -1 }));
+    loading(-1);
   }
   if (!response.ok) {
     let message;
