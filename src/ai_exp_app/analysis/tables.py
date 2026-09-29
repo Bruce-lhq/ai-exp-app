@@ -57,7 +57,7 @@ def render_table(runs, columns, baseline=None):
     rows, warnings, footnotes = [], [], []
     for run in runs:
         row = []
-        stopped = run.get('status') == 'stopped'
+        stopped = run.get('status') in {'stopped', 'paused'}
         stop_tokens = run.get('stop_tokens')
         if stopped and stop_tokens is None:
             stop_tokens = max((r['tokens'] for r in run.get('records', []) if r.get('tokens') is not None), default=None)

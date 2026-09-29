@@ -15,6 +15,7 @@ export const statusNames: Record<string, string> = {
   completed: "已完成",
   failed: "失败",
   stopped: "已停止",
+  paused: "已暂停",
   starting: "启动中",
   stopping: "停止中",
   accepted: "已提交",
@@ -29,6 +30,10 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [selected, setSelected] = useState(new URLSearchParams(location.search).get("run")||""),
     [log, setLog] = useState(""),
     [stop, setStop] = useState(""),
+    [stopAction, setStopAction] = useState<"stop" | "pause">("stop"),
+    [resumeOpen, setResumeOpen] = useState(false),
+    [resumeId, setResumeId] = useState(""),
+    [resuming, setResuming] = useState(false),
     [pauseAlso, setPauseAlso] = useState(false),
     [drag, setDrag] = useState(0),
     [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
@@ -150,10 +155,13 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           <h1>运行监控</h1>
           <p>运行留在云端。断开工作台，不会中断训练与队列。</p>
         </div>
+        <div className="row">
+        <button onClick={() => { setResumeId(""); setResumeOpen(true); }}><Play size={15} />严格续跑</button>
         <button onClick={() => action(() => api("/api/connection/refresh", {}))}>
           <RefreshCw size={15} />
           刷新
         </button>
+        </div>
       </div>
       <section className="panel live-chart-panel">
         <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
@@ -280,24 +288,15 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               {["running", "starting"].includes(
                 runs.find((x) => x.id === selected)?.status || "",
               ) && (
-                <button className="danger" onClick={() => setStop(selected)}>
+                <>
+                <button onClick={() => { setStopAction("pause"); setPauseAlso(false); setStop(selected); }}><Pause size={14} />暂停实验</button>
+                <button className="danger" onClick={() => { setStopAction("stop"); setPauseAlso(false); setStop(selected); }}>
                   <Square size={14} />
                   停止实验
                 </button>
+                </>
               )}
-              {runs.find((x) => x.id === selected)?.status === "external_running" && <span className="muted">由终端启动，工作台仅监控</span>}
-              {["stopped", "failed"].includes(
-                runs.find((x) => x.id === selected)?.status || "",
-              ) && (
-                <button
-                  onClick={() =>
-                    action(() => api(`/api/runs/${selected}/resume`, {}))
-                  }
-                >
-                  <Play size={14} />
-                  严格续跑
-                </button>
-              )}
+              {runs.find((x) => x.id === selected)?.status === "external_running" && <><button disabled title="终端实验尚未接管，无法验证进程身份">暂停实验</button><span className="muted">由终端启动，工作台仅监控；暂停需先接管实验</span></>}
             </div>
           </div>
           <details open>
@@ -307,8 +306,8 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         </section>
       )}
       {stop && (
-        <Modal title="停止实验？" close={() => setStop("")}>
-          <p>训练将停止。以后可从最近已有的完整 checkpoint 严格续跑。</p>
+        <Modal title={stopAction === "pause" ? "暂停实验？" : "停止实验？"} close={() => setStop("")}>
+          <p>当前训练进程将退出并释放 GPU，不额外保存 checkpoint。之后请从页面上方的“严格续跑”入口恢复，最近 checkpoint 之后的进度需要重跑。</p>
           <label className="check">
             <input
               type="checkbox"
@@ -323,20 +322,34 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               className="danger"
               onClick={() =>
                 action(async () => {
-                  await api(`/api/runs/${stop}/stop`, {
+                  await api(`/api/runs/${stop}/${stopAction}`, {
                     confirmed: true,
                     pause_queue: pauseAlso,
                   });
                   setStop("");
-                  notify("已请求停止实验");
+                  notify(stopAction === "pause" ? "已请求暂停实验，正在等待进程退出" : "已请求停止实验");
                 })
               }
             >
-              确认停止
+              {stopAction === "pause" ? "确认暂停" : "确认停止"}
             </button>
           </footer>
         </Modal>
       )}
+      {resumeOpen && <Modal title="严格续跑" close={() => setResumeOpen(false)}>
+        <p>选择工作台管理的实验，从其最近完整 checkpoint 恢复。代码、参数、GPU 数和训练状态通过校验后，实验加入队尾。</p>
+        <label>续跑实验<select aria-label="续跑实验" value={resumeId} onChange={(e) => setResumeId(e.target.value)}>
+          <option value="">选择实验</option>
+          {runs.filter((r) => !r.external && ["paused", "stopped", "failed"].includes(r.status)).map((r) => <option key={r.id} value={r.id}>{r.display_name} · {statusNames[r.status]}</option>)}
+        </select></label>
+        <p className="muted">外部目录的 checkpoint 暂不支持导入；仅有模型权重不能严格续跑。</p>
+        <footer><button onClick={() => setResumeOpen(false)}>取消</button><button className="primary" disabled={!resumeId || resuming} onClick={async () => {
+          setResuming(true);
+          try { await api(`/api/runs/${resumeId}/resume`, {}); setResumeOpen(false); notify("严格校验通过，实验已加入队尾"); await refresh(); }
+          catch (e) { notify((e as Error).message); }
+          finally { setResuming(false); }
+        }}>{resuming ? "正在校验…" : "校验并加入队列"}</button></footer>
+      </Modal>}
     </>
   );
 }

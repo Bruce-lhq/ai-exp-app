@@ -87,8 +87,10 @@ def tick(store):
                 text = tail(Path(run['remote_path']) / 'train.log')
                 success = ended and ended['exit_code'] == 0 and 'done:' in text and ('Best:' in text or 'Final:' in text)
                 run['status'] = 'completed' if success else 'stopped' if run.get('stop_requested') else 'failed'
+                if run['status'] == 'stopped' and run.get('stop_reason') == 'pause':
+                    run['status'] = 'paused'
                 run['ended_at'], run['exit'] = time.time(), ended
-                if run['status'] == 'stopped':
+                if run['status'] in ('stopped', 'paused'):
                     run['stop_tokens'] = latest_tokens(Path(run['remote_path']) / 'metrics.jsonl')
                 for attempt in run.get('attempts', []):
                     if attempt['attempt_id'] == run['attempt_id']:
