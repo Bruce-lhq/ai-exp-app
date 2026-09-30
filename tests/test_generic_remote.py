@@ -171,7 +171,7 @@ errors=[]
 if c.get("code_sha")!=hashlib.sha256(Path("job.py").read_bytes()).hexdigest():errors.append("code changed")
 if c.get("data_sha")!=DATA_SHA:errors.append("data changed")
 if r["phase"]=="validate" and r["training"]!=c["training"]:errors.append("training changed")
-print(json.dumps(dict(strict=True,compatible=not errors,errors=errors,verified_state=valid,training=c["training"],runtime={"gpu_count":c["world_size"]},tokens_seen=c["data_position"])))
+print(json.dumps(dict(strict=True,compatible=not errors,errors=errors,verified_state=valid,training=c["training"],runtime={"gpu_count":c["world_size"]},step=c["data_position"])))
 ''')
     def execute(output,resume=None,until=10):
         run['remote_path']=str(output)
@@ -186,7 +186,7 @@ print(json.dumps(dict(strict=True,compatible=not errors,errors=errors,verified_s
     execute(tmp_path/'partial',until=6)
     checkpoint=tmp_path/'partial/state.json'
     run['remote_path']=str(tmp_path/'partial')
-    assert validate(run)['tokens_seen']==6
+    assert validate(run)['step']==6
     restored=execute(tmp_path/'restored',resume=checkpoint)
     assert restored==uninterrupted
     value=json.loads(checkpoint.read_text());value['data_sha']='wrong dataset';checkpoint.write_text(json.dumps(value))
@@ -201,3 +201,20 @@ def test_mixed_string_choice_or_numeric_value_in_explicit_profile(tmp_path):
     assert spec['argv'][-2:] == ['--width', '16000']
     run['parameters']['training']['width'] = 'small'
     assert build_launch(run['project'], run, [0])['argv'][-1] == 'small'
+
+
+def test_submission_preserves_native_checkpoint_extension(tmp_path):
+    from ai_exp_remote.resume import checkpoint_identity
+    profile = dict(command=['{python}','job.py'],parameters=[],resume=dict(
+        flag='--restore',checkpoint='state.ckpt.json',validator=['{python}','verify.py','{checkpoint}']))
+    source, run = make_run(tmp_path,profile,{})
+    (source/'job.py').write_text('print("finished")\n')
+    (source/'verify.py').write_text('import json,sys\nfrom pathlib import Path\np=Path(sys.argv[1])\nassert p.suffix==".json", "native loader requires json extension"\nprint(p.read_text())\n')
+    checkpoint = tmp_path/'state.ckpt.json'
+    checkpoint.write_text(json.dumps(dict(strict=True,compatible=True,verified_state={
+        key:True for key in ['model','optimizer','scheduler','rng','data_position']},training={},runtime={'gpu_count':1})))
+    value = handle(dict(version=1,request_id='resume',operation='submit',payload=dict(
+        run_id='restored',project={**run['project'],'runs_root':str(tmp_path/'runs')},parameters=run['parameters'],
+        resume=dict(path=str(checkpoint),identity=checkpoint_identity(checkpoint)))),tmp_path/'agent/state',False)
+    assert value['resume_path'].endswith('.ckpt.json')
+    assert Path(value['resume_path']).read_bytes() == checkpoint.read_bytes()

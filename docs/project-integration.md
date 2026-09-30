@@ -91,7 +91,7 @@ JSON 配置项目使用 `"parameter_style": "json"`，并在命令里放 `{param
 }
 ```
 
-`checkpoint` 是实验目录内的相对文件路径。`flag` 只在续跑时追加；也可提供 `resume.command`，其 argv 包含 `{resume}`，用于与普通启动完全不同的续跑命令。普通 command 不能含未设置的 `{resume}`。
+`checkpoint` 是实验目录内的相对文件路径，固定副本保留原扩展名。多文件／目录格式由 Agent 接入包装：原子生成完整状态归档，校验所有成员和身份，再在独立暂存目录中恢复为原生格式；不能仅固定一个指针而让其余分片继续变化。`flag` 只在续跑时追加；也可提供 `resume.command`，其 argv 包含 `{resume}`，用于与普通启动完全不同的续跑命令。普通 command 不能含未设置的 `{resume}`。
 
 验证器在可信项目目录运行，不访问 GPU。它读取 `{request}` JSON：`phase` 为 `preview` 或 `validate`。提交校验还包含新任务的 `training`、`runtime.gpu_count`、`snapshot` 和 `checkpoint_path`。必须检查代码／数据／配置兼容性及完整状态，并将唯一的 JSON 写到 stdout（其他日志写 stderr），成功退出：
 

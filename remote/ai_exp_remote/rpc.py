@@ -127,7 +127,8 @@ def handle(request,root=None,start_daemon=True):
             run['resolved_parameters']=json_safe(validate_launch(spec))
             if p.get('resume'):
                 from .resume import pin
-                run['resume_path']=pin(p['resume'],root.parent/'checkpoints'/(run_id+'.pt'))
+                suffix=''.join(Path(p['resume']['path']).suffixes) or '.checkpoint'
+                run['resume_path']=pin(p['resume'],root.parent/'checkpoints'/(run_id+suffix))
                 try:
                     validate_checkpoint(run,run['resume_path'])
                 except Exception:
