@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml)
 
+**公开预览版下载：[v0.2.0 Release](https://github.com/Bruce-lhq/ai-exp-app/releases/tag/v0.2.0)** · Apple Silicon / arm64，macOS 13+；附 DMG 和 SHA-256 校验文件。
+
 通过 SSH 管理 GPU 实验，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端训练和队列。
 
 当前为早期版本，训练启动、参数读取和严格续跑首先适配 **launcher 风格的 PyTorch 项目**，尚不是任意 GitHub 项目开箱即用的训练器。图表与表格可使用本地缓存离线生成。
@@ -21,7 +23,7 @@
 
 ### macOS 应用
 
-公开安装包通过本仓库的 [Releases](https://github.com/Bruce-lhq/ai-exp-app/releases) 分发，DMG 不存放在 Git 仓库。首次 Release 发布前，可按下文从源码构建。
+公开安装包通过本仓库的 [Releases](https://github.com/Bruce-lhq/ai-exp-app/releases) 分发，DMG 不存放在 Git 仓库。也可按下文从源码构建。
 
 1. 下载与机器架构匹配的 `AI-Experiment-macOS.dmg`，打开后将 `AI Experiment.app` 拖入“应用程序”。
 2. 打开应用，按首次设置填写 SSH 别名和目录；也可选择“稍后设置”先导入本地历史。
