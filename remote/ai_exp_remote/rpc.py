@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import shutil
 import sys
 import time
 import uuid
@@ -21,10 +22,12 @@ READERS={'list_directory':files.list_directory,'inspect_project':projects.inspec
 MUTATIONS={'submit','stop','pause','resume','queue_order','queue_pause','queue_resume','queue_remove','delete_preview','delete_confirm','remove_external'}
 
 def external_runs(alias='gpu'):
+    if shutil.which('gpu-groups') is None:
+        return []
     completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
     if completed.returncode:
         raise AgentError('EXTERNAL_STATUS', '无法读取终端 GPU 分组', completed.stderr[-2000:])
-    dashboard = subprocess.run(['dashboard'], text=True, capture_output=True, timeout=15)
+    dashboard = subprocess.run(['dashboard'], text=True, capture_output=True, timeout=15) if shutil.which('dashboard') else subprocess.CompletedProcess(['dashboard'],0,'','')
     details = {}
     for line in dashboard.stdout.splitlines() if dashboard.returncode == 0 else []:
         parts = [x.strip() for x in line.split('|')]
@@ -53,28 +56,7 @@ def handle(request,root=None,start_daemon=True):
         return files.read_file(dict(path=p['path'], name=p.get('name', 'train.log'),
                                     offset=p.get('offset', 0), limit=p.get('limit', 65536)))
     if op == 'external_status':
-        # Read terminal-managed GPU groups without importing them into the platform queue.
-        completed = subprocess.run(['gpu-groups', 'list', '--all'], text=True, capture_output=True, timeout=15)
-        if completed.returncode:
-            raise AgentError('EXTERNAL_STATUS', '无法读取终端 GPU 分组', completed.stderr[-2000:])
-        items=[]
-        dashboard = subprocess.run(['dashboard'], text=True, capture_output=True, timeout=15)
-        dashboard_lines = dashboard.stdout.splitlines() if dashboard.returncode == 0 else []
-        details = {}
-        for line in dashboard_lines:
-            parts = [x.strip() for x in line.split('|')]
-            if len(parts) >= 7 and parts[1] and parts[1] != 'GPU' and parts[1] != '---':
-                details[parts[5]] = {'dashboard_status': parts[2], 'progress': parts[3], 'remaining': parts[4], 'queue_name': parts[6]}
-        for line in completed.stdout.splitlines():
-            parts=line.split('\t')
-            if len(parts) < 3 or not parts[0].isdigit(): continue
-            group, gpus, path = parts[0], parts[1], parts[2]
-            info=details.get(Path(path).name, {})
-            items.append(dict(id='external-'+hashlib.sha1(path.encode()).hexdigest()[:16], display_name=Path(path).name,
-                              status='external_running', external=True, group=group,
-                              gpu_ids=[int(x) for x in gpus.split(',') if x.isdigit()], remote_path=path,
-                              ssh_alias=p.get('ssh_alias','gpu'), **info))
-        return {'runs': items, 'source': 'gpu-groups'}
+        return {'runs':external_runs(p.get('ssh_alias','gpu')), 'source':'gpu-groups'}
     root=Path(root or ROOT);store=Store(root)
     if op in ('adopt_external','pause_external','remove_external'):
         from . import adoption
@@ -134,7 +116,7 @@ def handle(request,root=None,start_daemon=True):
             check_start(state,p.get('mode','queue'),count)
             project=p['project'];source=project.get('path') or project.get('remote_path')
             snapshot=create_snapshot(Path(source),root.parent/'snapshots'/run_id,p.get('code') or {'kind':'working_tree'},project.get('exclusions',[]))
-            schema=json_safe(projects.read_schema(dict(path=snapshot['path'],code={'kind':'working_tree'},python=project.get('python'))))
+            schema=json_safe(projects.read_schema(dict(path=snapshot['path'],code={'kind':'working_tree'},python=project.get('python'),integration=project.get('integration'))))
             runs_root=Path(project.get('runs_root',settings()['remote_runs_root']))
             if not runs_root.is_absolute():raise AgentError('INVALID_PATH','实验根目录必须是绝对路径')
             output=runs_root/run_id;output.parent.mkdir(parents=True,exist_ok=True)
@@ -143,8 +125,6 @@ def handle(request,root=None,start_daemon=True):
             # Parser-level validation in selected environment, never run main or create a model.
             spec=build_launch(project,run,list(range(count)))
             run['resolved_parameters']=json_safe(validate_launch(spec))
-            data_meta=Path(project.get('data_root',settings()['remote_data_root']))/'meta.json'
-            run['data_meta_hash']=hashlib.sha256(data_meta.read_bytes()).hexdigest() if data_meta.exists() else None
             if p.get('resume'):
                 from .resume import pin
                 run['resume_path']=pin(p['resume'],root.parent/'checkpoints'/(run_id+'.pt'))
@@ -187,7 +167,7 @@ def handle(request,root=None,start_daemon=True):
             if run['status'] not in ('failed','stopped','paused'):raise AgentError('RESUME_STATE','仅允许续跑已暂停、停止或失败的实验')
             check_start(state,p.get('mode','queue'),run['gpu_count'])
             validate_checkpoint(run)
-            run['resume_path']=str(Path(run['remote_path'])/'latest.pt');run['status']='queued';run['stop_requested']=None;run.pop('stop_reason',None)
+            run['resume_path']=str(Path(run['remote_path'])/run['schema'].get('integration',{}).get('resume',{}).get('checkpoint','latest.pt'));run['status']='queued';run['stop_requested']=None;run.pop('stop_reason',None)
             state['queue'].append(run['run_id']);emit(state,'accepted',run,{'resume':True});result=run
         else:raise AgentError('UNKNOWN_OPERATION','未知操作')
         if op in MUTATIONS:state['requests'][request_id]={'digest':digest,'result':json.loads(json.dumps(result))}
@@ -240,50 +220,17 @@ def check_start(state,mode,count):
         reserved={g for r in state['runs'].values() if r['status'] in ('starting','running','stopping') for g in r.get('gpu_ids',[])}
         if choose_gpus(count,[d['index'] for d in gpu_status() if d['available'] and d['index'] not in reserved]) is None:raise AgentError('RESOURCE_UNAVAILABLE','GPU 资源不足，请加入队列')
 
-VALIDATE=r'''
-import contextlib,importlib.util,sys,json
-sys.path.insert(0,sys.argv[1])
-with contextlib.redirect_stdout(sys.stderr):
- s=importlib.util.spec_from_file_location('ai_exp_train',sys.argv[1]+'/train.py');m=importlib.util.module_from_spec(s);sys.modules[s.name]=m;s.loader.exec_module(m)
- args=m.build_parser().parse_args(json.loads(sys.argv[2]))
- if hasattr(m,'_resolve_backbone_defaults'):m._resolve_backbone_defaults(args)
- if hasattr(m,'validate_args'):m.validate_args(args)
- if hasattr(m,'resolved_model_config'):
-  config=m.resolved_model_config(args,50257)
-  if getattr(args,'ca_lambda',None)==0 and getattr(config,'ca_lambda',0)!=0:raise ValueError('源码 ca_lambda=0 与模型配置不一致')
- print(json.dumps(vars(args),default=str))
-'''
 def validate_launch(spec):
+    profile = spec['integration']
+    if 'parameters' in profile:
+        return dict(spec['training'])
     from .parser_probe import resolve
-    try:return resolve(spec['cwd'],spec['argv'][6:])
-    except (Exception,SystemExit) as exc:raise AgentError('PARAMETER_VALIDATION','源码参数校验失败',str(exc)) from exc
-
-CHECKPOINT=r'''
-import torch,sys,json,importlib.util,contextlib
-c=torch.load(sys.argv[1],map_location='cpu',weights_only=False)
-n=int(sys.argv[2]);required=['model_state','optimizer_state','rng_states','train_sample_cursors','tokens_seen','optimizer_step','data_step','args','model_config','data_config','tokenizer_config']
-errors=['缺少 '+k for k in required if k not in c]
-if c.get('world_size')!=n:errors.append('GPU 数不匹配')
-for k in ['rng_states','train_sample_cursors']:
- if len(c.get(k,[]))!=n:errors.append(k+' 缺少 rank 状态')
-if c.get('args',{}).get('amp') and c.get('args',{}).get('amp_dtype') in ('fp16','float16') and not c.get('grad_scaler_state'):errors.append('缺少 grad_scaler_state')
-with contextlib.redirect_stdout(sys.stderr):
- sys.path.insert(0,sys.argv[3]);s=importlib.util.spec_from_file_location('ai_exp_resume_train',sys.argv[3]+'/train.py');m=importlib.util.module_from_spec(s);sys.modules[s.name]=m;s.loader.exec_module(m)
- a=m.build_parser().parse_args(json.loads(sys.argv[4]))
- if hasattr(m,'_resolve_backbone_defaults'):m._resolve_backbone_defaults(a)
- if a.allow_nonexact_resume or a.allow_world_size_change:errors.append('禁止非严格续跑')
- if not all(hasattr(m,k) for k in ('_resume_setting_differences','_validate_resume_config','load_data_info')):raise ValueError('此源码尚不支持严格续跑校验')
- info=m.load_data_info(a.data_root)
- if c.get('tokenizer_config')!=info.tokenizer_config():errors.append('tokenizer 不匹配')
- if c.get('data_config')!=dict(sequence_length=a.sequence_length,dtype=info.dtype,vocab_size=info.vocab_size,manifest_fingerprint=info.manifest_fingerprint):errors.append('数据或序列长度不匹配')
- if hasattr(m,'_resume_setting_differences'):
-  if m._resume_setting_differences(c,a):errors.append('训练参数与 checkpoint 不一致')
- for key,default in [('ca_lambda_schedule','fixed'),('ca_lambda_decay_tokens',0)]:
-  if c.get('args',{}).get(key,default)!=getattr(a,key,default):errors.append(key+' 与 checkpoint 不一致')
- if hasattr(m,'_validate_resume_config') and hasattr(m,'resolved_model_config'):
-  m._validate_resume_config(c,m.resolved_model_config(a,c.get('model_config',{}).get('vocab_size',50257)))
-print(json.dumps({'errors':errors,'tokens_seen':c.get('tokens_seen')}))
-'''
+    try:
+        argv=spec['argv']
+        arguments=argv[argv.index(profile['entrypoint'])+1:] if profile['entrypoint'] in argv else spec['parameter_argv']
+        return resolve(spec['cwd'], arguments, profile['entrypoint'], profile['parser_function'])
+    except (Exception, SystemExit) as exc:
+        raise AgentError('PARAMETER_VALIDATION', '项目参数校验失败', str(exc)) from exc
 
 def json_safe(value):
     """Keep the line protocol valid when argparse or metrics contain NaN/Infinity."""
@@ -293,18 +240,12 @@ def json_safe(value):
     if isinstance(value, (list, tuple)): return [json_safe(v) for v in value]
     return value
 def validate_checkpoint(run, checkpoint_path=None):
-    path=Path(checkpoint_path) if checkpoint_path else Path(run['remote_path'])/'latest.pt'
-    if not path.is_file():raise AgentError('CHECKPOINT_MISSING','没有最近完整 checkpoint，不能严格续跑')
+    from .resume import validate
     from .snapshot import manifest
-    if manifest(Path(run['snapshot']['path']),[])!=run['snapshot']['manifest']:raise AgentError('CODE_CHANGED','原代码快照已改变，禁止续跑')
-    data_meta=Path(run['project'].get('data_root',settings()['remote_data_root']))/'meta.json'
-    if run.get('data_meta_hash') is None or not data_meta.exists() or hashlib.sha256(data_meta.read_bytes()).hexdigest()!=run['data_meta_hash']:raise AgentError('DATA_CHANGED','无法确认原始数据身份，禁止续跑')
-    spec=build_launch(run['project'],run,list(range(run['gpu_count'])))
-    result=subprocess.run([run['project'].get('python') or projects.PYTHON,'-c',CHECKPOINT,str(path),str(run['gpu_count']),spec['cwd'],json.dumps(spec['argv'][6:])],capture_output=True,text=True,timeout=90,env=dict(os.environ,CUDA_VISIBLE_DEVICES=''))
-    if result.returncode:raise AgentError('CHECKPOINT_INVALID','checkpoint 读取失败',result.stderr[-2000:])
-    value=json.loads(result.stdout)
-    if value['errors']:raise AgentError('CHECKPOINT_INCOMPLETE','checkpoint 无法完整续跑',value['errors'])
-    run['resume_tokens']=value['tokens_seen']
+    if manifest(Path(run['snapshot']['path']),[]) != run['snapshot']['manifest']:
+        raise AgentError('CODE_CHANGED','原代码快照已改变，禁止续跑')
+    value = validate(run, checkpoint_path)
+    run['resume_tokens'] = value.get('tokens_seen')
 
 def main():
     request={}

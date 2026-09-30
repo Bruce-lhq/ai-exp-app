@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import pytest
 from ai_exp_remote.resume import pin, checkpoint_identity
@@ -64,6 +65,7 @@ def test_submission_pins_resume_before_queue_and_uses_new_output(tmp_path, monke
     source = tmp_path / 'project'
     source.mkdir()
     (source / 'train.py').write_text('import argparse\ndef build_parser():\n p=argparse.ArgumentParser()\n p.add_argument("--lr",type=float,default=.1)\n p.add_argument("--run-dir")\n p.add_argument("--data-root")\n p.add_argument("--resume")\n return p\n')
+    (source/'workbench.project.json').write_text(json.dumps({'version':1,'command':['{python}','train.py','--run-dir','{run_dir}'],'parameters':[{'name':'lr','type':'number','default':.1,'flag':'--lr'}],'resume':{'flag':'--resume','validator':['{python}','verify.py','{checkpoint}','{request}']}}))
     old = tmp_path / 'old'
     old.mkdir()
     checkpoint = old / 'latest.pt'

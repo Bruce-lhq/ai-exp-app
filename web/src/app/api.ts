@@ -82,7 +82,7 @@ export type Project = { id: string; name: string; host: string; path: string };
 export type Parameters = {
   project_id?: string;
   display_name?: string;
-  resume?: { ticket: string; path: string; tokens_seen: number };
+  resume?: { ticket: string; path: string; tokens_seen?: number; step?: number };
   training: Record<string, any>;
   runtime: { gpu_count: number };
 };

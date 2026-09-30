@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "command": ["{python}", "experiment.py", "--output", "{run_dir}"],
+  "parameters": [
+    {"name": "steps", "type": "integer", "default": 8, "flag": "--steps", "constraints": {"min": 1}},
+    {"name": "learning_rate", "type": "number", "default": 0.1, "flag": "--rate", "constraints": {"min": 0}}
+  ],
+  "environment": {"PYTHONUNBUFFERED": "1"}
+}

@@ -57,18 +57,24 @@ def pause_failure(state, run, reason):
     emit(state, 'failed', run, {'reason': reason})
     state['paused'] = True
     emit(state, 'queue_paused', run, {'reason': reason})
+    write_metadata(run)
 
 def write_metadata(run):
     output = Path(run['remote_path'])
-    # train.py refuses nonempty new output directories; only write once it has prepared them.
-    if not (output / 'train.log').exists():
+    # Some programs require a fresh output directory. Do not pre-create it before launch.
+    if not output.exists() and run['status'] in ACTIVE:
         return
+    output.mkdir(parents=True,exist_ok=True)
+    if not (output / 'args.json').exists():
+        atomic_json(output / 'args.json', run['parameters']['training'])
     if run['status'] not in ACTIVE and run.get('attempt_dir'):
         launch = Path(run['attempt_dir']) / 'launch.log'
         if launch.exists():
             temporary = output / '.launch.log.tmp'
             shutil.copyfile(launch, temporary)
             os.replace(temporary, output / 'launch.log')
+            if not (output / 'train.log').exists():
+                shutil.copyfile(launch, output / 'train.log')
     atomic_json(output / 'run.json', {k: run.get(k) for k in (
         'id', 'run_id', 'display_name', 'status', 'project_id', 'attempt_id', 'attempts',
         'stop_tokens', 'ended_at', 'created_at', 'gpu_count')})
@@ -98,8 +104,7 @@ def tick(store):
                     stop_attempt(run['identity'])
                     continue
             if ended or lost:
-                text = tail(Path(run['remote_path']) / 'train.log')
-                success = ended and ended['exit_code'] == 0 and 'done:' in text and ('Best:' in text or 'Final:' in text)
+                success = ended and ended['exit_code'] == 0 and not run.get('stop_requested')
                 run['status'] = 'completed' if success else 'stopped' if run.get('stop_requested') else 'failed'
                 if run['status'] == 'stopped' and run.get('stop_reason') == 'pause':
                     run['status'] = 'paused'

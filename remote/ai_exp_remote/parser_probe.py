@@ -1,4 +1,4 @@
-"""Read the trusted launcher parser without importing torch or training modules."""
+"""Read an isolated argparse definition without importing training dependencies."""
 import argparse
 import ast
 import math
@@ -7,10 +7,12 @@ import warnings
 from pathlib import Path
 
 
-def namespace(path):
+def namespace(path, entrypoint="train.py", parser_function="build_parser"):
     path = Path(path)
-    tree = ast.parse((path / 'train.py').read_text())
-    names = {'build_parser', '_resolve_backbone_defaults', 'validate_args', '_senior_ffn_width'}
+    source = (path / entrypoint).resolve()
+    if path.resolve() not in source.parents: raise ValueError('entrypoint 必须位于项目目录内')
+    tree = ast.parse(source.read_text())
+    names = {parser_function}
     scope = {'argparse': argparse, 'math': math, 'os': os, 'warnings': warnings}
     def str2bool(value):
         if isinstance(value, bool): return value
@@ -27,13 +29,13 @@ def namespace(path):
     functions = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     future = ast.ImportFrom(module='__future__', names=[ast.alias(name='annotations')], level=0)
     module = ast.fix_missing_locations(ast.Module(body=[future, *functions], type_ignores=[]))
-    exec(compile(module, str(path / 'train.py'), 'exec'), scope)
-    if 'build_parser' not in scope: raise ValueError('源码没有 build_parser')
+    exec(compile(module, str(source), 'exec'), scope)
+    if parser_function not in scope: raise ValueError('源码没有 ' + parser_function)
     return scope
 
 
-def fields(path):
-    parser = namespace(path)['build_parser']()
+def fields(path, entrypoint="train.py", parser_function="build_parser"):
+    parser = namespace(path, entrypoint, parser_function)[parser_function]()
     result = []
     for group in parser._action_groups:
         for action in group._group_actions:
@@ -44,9 +46,6 @@ def fields(path):
     return result
 
 
-def resolve(path, argv):
-    scope = namespace(path)
-    args = scope['build_parser']().parse_args(argv)
-    if '_resolve_backbone_defaults' in scope: scope['_resolve_backbone_defaults'](args)
-    if 'validate_args' in scope: scope['validate_args'](args)
-    return vars(args)
+def resolve(path, argv, entrypoint="train.py", parser_function="build_parser"):
+    scope = namespace(path, entrypoint, parser_function)
+    return vars(scope[parser_function]().parse_args(argv))

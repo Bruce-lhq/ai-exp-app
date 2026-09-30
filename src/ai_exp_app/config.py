@@ -11,6 +11,7 @@ LOCAL_DEFAULTS = {
     'remote_root': '.local/share/ai-exp-app',
     'remote_state_dir': '',
     'remote_python': 'python3',
+    'remote_gpu_probe': '',
     'remote_runs_root': '',
     'remote_data_root': '',
     'remote_projects_root': '/',
@@ -38,7 +39,7 @@ class Config:
     @property
     def configured(self):
         value = self.local_settings
-        return self.config_file.exists() and all(value[key] for key in ('ssh_alias', 'remote_agent', 'remote_python')) and all(str(value[key]).startswith('/') for key in ('remote_runs_root', 'remote_data_root'))
+        return self.config_file.exists() and all(value[key] for key in ('ssh_alias', 'remote_agent', 'remote_python')) and str(value['remote_runs_root']).startswith('/')
 
     def save_local_settings(self, values):
         unknown = set(values) - set(LOCAL_DEFAULTS)
@@ -59,7 +60,7 @@ class Config:
             raise ValueError('远端命令和路径不能包含换行')
         if document['remote_runs_root'] == '/':
             raise ValueError('实验根目录必须为专用目录，不能是 /')
-        for key in ('remote_runs_root', 'remote_data_root', 'remote_projects_root', 'remote_import_root', 'remote_state_dir', 'remote_groups_root'):
+        for key in ('remote_runs_root', 'remote_data_root', 'remote_projects_root', 'remote_import_root', 'remote_state_dir', 'remote_groups_root', 'remote_gpu_probe'):
             if document[key] and not document[key].startswith('/'):
                 raise ValueError(key + ' 必须为远端绝对目录')
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
