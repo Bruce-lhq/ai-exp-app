@@ -17,7 +17,7 @@ def setup(client):
 def test_import_and_preset_changes_never_replace_last_run(tmp_path):
     with TestClient(create_app(tmp_path)) as c:
         id = setup(c)
-        group = c.post(f"/api/projects/{id}/presets/import", json={"name": "wonn", "document": {"parameters": PARAMS}}, headers=ORIGIN)
+        group = c.post(f"/api/projects/{id}/presets/import", json={"name": "project-a", "document": {"parameters": PARAMS}}, headers=ORIGIN)
         assert group.status_code == 201
         assert c.get(f"/api/projects/{id}/editor-initial").json()["training"]["learning_rate"] == 0.01
         store = c.app.state.store

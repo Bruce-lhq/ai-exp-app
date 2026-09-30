@@ -53,7 +53,7 @@ python3 examples/minimal/experiment.py --output /tmp/workbench-example-run --ste
 
 工作台把编辑区参数追加为 CLI 选项。`null` 不传，布尔开关按 `action` 处理。名称与实际选项无需一致。没有参数也可以声明 `"parameters": []`。
 
-JSON 配置项目使用 `"parameter_style": "json"`，并在命令里放 `{parameter_file}`，例如 `["{python}", "fit.py", "--config", "{parameter_file}", "--output", "{run_dir}"]`；该文件保存提交的参数对象，CLI 参数不追加。当前参数编辑支持标量，不支持任意嵌套配置编辑；复杂配置可由项目包装脚本合并。
+JSON 配置项目使用 `"parameter_style": "json"`，并在命令里放 `{parameter_file}`，例如 `["{python}", "fit.py", "--config", "{parameter_file}", "--output", "{run_dir}"]`；该文件保存提交的参数对象，CLI 参数不追加。当前参数编辑支持标量，不支持任意嵌套配置编辑；复杂配置可由项目包装脚本合并。协议中的 training/runtime 是分组名；原项目若使用这些同名字段，可用明确的编辑区别名和实际 flag／原生字段映射。指标横轴字段也应与普通指标区分，必要时保留来源名并使用 metrics/ 前缀别名。
 
 可选 argparse 发现：不提供 `parameters` 时，以 `entrypoint`（默认 `train.py`）和 `parser_function`（默认 `build_parser`）探测解析器。只适用于独立、可抽取的解析器；若解析器依赖框架导入、动态配置或辅助函数，应显式声明参数。不要通过执行训练入口获得参数。
 
@@ -110,3 +110,7 @@ JSON 配置项目使用 `"parameter_style": "json"`，并在命令里放 `{param
 这些布尔值是验证器检查结果，不能无条件填写 `true`。不使用某项状态的训练也应明确验证其缺省行为能精确恢复。可通过 `required_state` 增加 scaler 或 tokenizer 等检查。工作台还核对原训练参数与 GPU 数量，检查复制前后 checkpoint 身份，并为新任务固定其副本；验证器本身负责格式、内容与代码／数据身份的可靠性。仅保存权重、猜测缺失状态、允许学习率或卡数变化，都不能声明为严格续跑。
 
 外部已有实验的严格续跑同样依赖项目验证器；不要求由工作台生成原 checkpoint。接入工具不会替训练程序补造缺失状态。
+
+## 代码目录与排除规则
+
+快照不按 data、runs 或 checkpoints 这样的通用目录名推断它们是产物；这些目录可能包含真正的代码。Agent 应检查实际结构，在项目 API 的 config.exclusions 中声明需要排除的相对路径模式，例如 ["artifacts", "artifacts/**"]。工作树与 Git 版本都会应用同样的排除规则；数据、环境和大型产物通常放在代码目录外。不要排除共享源码或配置目录。

@@ -8,13 +8,16 @@ import tarfile
 import uuid
 from .state import AgentError
 
-EXCLUDED = {'.git', '.venv', '__pycache__', 'node_modules', 'runs', 'checkpoints', 'data', '.cache'}
+EXCLUDED = {'.git', '.venv', '__pycache__', 'node_modules', '.cache'}
+
+def excluded(path, exclusions):
+    return any(p in EXCLUDED for p in path.parts) or any(fnmatch.fnmatch(str(path), p) for p in exclusions)
 
 def manifest(root, exclusions):
     result = {}
     for path in sorted(root.rglob('*')):
         rel = path.relative_to(root)
-        if any(p in EXCLUDED for p in rel.parts) or any(fnmatch.fnmatch(str(rel), p) for p in exclusions):
+        if excluded(rel, exclusions):
             continue
         if path.is_symlink():
             raise AgentError('SNAPSHOT_SYMLINK', '代码快照不支持符号链接', str(rel))
@@ -44,7 +47,7 @@ def create_snapshot(source, destination, code, exclusions):
                 for member in archive.getmembers():
                     if member.issym() or member.islnk() or member.name.startswith('/') or '..' in Path(member.name).parts:
                         raise AgentError('SNAPSHOT_SYMLINK', 'Git 快照包含不安全链接')
-                archive.extractall(staging)
+                archive.extractall(staging, members=[m for m in archive.getmembers() if not excluded(Path(m.name), exclusions)])
         else:
             before = manifest(source, exclusions)
             for name in before:

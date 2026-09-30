@@ -37,3 +37,26 @@ def test_git_ref_freezes_selected_commit_without_switching_source(tmp_path):
     assert git('branch', '--show-current') == 'main'
     (source/'train.py').write_text('changed again')
     assert (tmp_path/'work/train.py').read_text() == 'uncommitted'
+
+
+def test_source_packages_are_not_excluded_by_dataset_or_run_names(tmp_path):
+    source = tmp_path/'source'
+    for name in ('package/data/loader.py', 'runs/entry.py', 'checkpoints/restore.py'):
+        path = source/name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('# genuine source\n')
+    snapshot = create_snapshot(source, tmp_path/'snapshot', {'kind':'working_tree'}, [])
+    assert set(snapshot['manifest']) == {'package/data/loader.py', 'runs/entry.py', 'checkpoints/restore.py'}
+
+
+def test_git_snapshot_respects_explicit_artifact_exclusions(tmp_path):
+    import subprocess
+    source = tmp_path/'source'; source.mkdir()
+    (source/'data').mkdir(); (source/'data/loader.py').write_text('# source\n')
+    (source/'artifacts').mkdir(); (source/'artifacts/output.bin').write_bytes(b'not source')
+    subprocess.run(['git','init','-b','main',str(source)], check=True, capture_output=True)
+    subprocess.run(['git','-C',str(source),'add','.'], check=True)
+    subprocess.run(['git','-C',str(source),'-c','user.name=QA','-c','user.email=qa@example.invalid','commit','-m','fixture'], check=True, capture_output=True)
+    snapshot = create_snapshot(source, tmp_path/'snapshot', {'kind':'ref','ref':'HEAD'}, ['artifacts', 'artifacts/**'])
+    assert set(snapshot['manifest']) == {'data/loader.py'}
+    assert not (tmp_path/'snapshot/artifacts').exists()

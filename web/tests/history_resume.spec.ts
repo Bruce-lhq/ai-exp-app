@@ -10,7 +10,7 @@ test('loading flat historical args does not activate the old checkpoint as a str
       id:'h', name:'旧实验', source:{kind:'local'}, status:'completed',
       parameters:{learning_rate:.00005, resume:'/runs/old/latest.pt', run_dir:'/runs/old'},
     }];
-    if (path === '/api/projects') body = [{id:'p',name:'s1llt',is_default:true}];
+    if (path === '/api/projects') body = [{id:'p',name:'project-b',is_default:true}];
     if (path.endsWith('/schema')) body = {fields:[{key:'learning_rate',kind:'number',default:.01,has_default:true}]};
     if (path.endsWith('/editor-initial')) body = {training:{learning_rate:.01},runtime:{gpu_count:1}};
     if (path.endsWith('/parameter-display')) body = {};
@@ -38,7 +38,7 @@ test('remote history loads resume into editor and submits using Start', async ({
     let body: any = [];
     if (path === '/api/history') body = [{id:'h', name:'历史备注', source:{kind:'remote'}, parameters:{}, status:'paused'}];
     if (path === '/api/history/h/resume-editor') body = {training:{learning_rate:.001},runtime:{gpu_count:4},project_id:'p',display_name:'历史备注 · 续跑',resume:{ticket:'ticket',path:'/runs/a/latest.pt',tokens_seen:5e9}};
-    if (path === '/api/projects') body = [{id:'p',name:'s1llt',is_default:true}];
+    if (path === '/api/projects') body = [{id:'p',name:'project-b',is_default:true}];
     if (path.endsWith('/schema')) body = {fields:[{key:'learning_rate',kind:'number',default:.01,has_default:true}]};
     if (path.endsWith('/editor-initial')) body = {training:{learning_rate:.01},runtime:{gpu_count:1}};
     if (path.endsWith('/parameter-display')) body = {};

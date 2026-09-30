@@ -51,19 +51,19 @@ def test_default_project_and_cached_schema_survive_router_reload(tmp_path, monke
     from ai_exp_app.db import Store
     from ai_exp_app.projects.api import create_router
     store = Store(tmp_path / 'db')
-    for identity in ('wonn', 's1llt'):
+    for identity in ('project-a', 'project-b'):
         store.put('projects', identity, {'id': identity, 'name': identity, 'remote_path': '/projects/' + identity})
         store.put('schemas', identity, {'fields': [{'key': 'lr', 'default': .01}], 'code': {'kind': 'working_tree', 'ref': None}})
     def offline(*args, **kwargs):
         raise AssertionError('Switching cached directories should not need SSH schema reload')
     monkeypatch.setattr('ai_exp_app.projects.api.remote', offline)
     app = FastAPI(); app.include_router(create_router(store)); client = TestClient(app)
-    assert client.patch('/api/projects/s1llt', json={'is_default': True}).status_code == 200
+    assert client.patch('/api/projects/project-b', json={'is_default': True}).status_code == 200
     restored = FastAPI(); restored.include_router(create_router(Store(tmp_path / 'db')))
     client = TestClient(restored)
     projects = client.get('/api/projects').json()
-    assert [p['id'] for p in projects if p['is_default']] == ['s1llt']
-    for identity in ('s1llt', 'wonn', 's1llt'):
+    assert [p['id'] for p in projects if p['is_default']] == ['project-b']
+    for identity in ('project-b', 'project-a', 'project-b'):
         assert client.post(f'/api/projects/{identity}/schema', json={'refresh': False}).status_code == 200
 
 
