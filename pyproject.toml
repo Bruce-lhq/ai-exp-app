@@ -1,10 +1,13 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-exp-app"
-version = "0.1.0"
+version = "0.2.0"
+description = "Local experiment workbench for SSH GPU training, cached charts and comparison tables"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = ["fastapi", "uvicorn", "pydantic"]
 
