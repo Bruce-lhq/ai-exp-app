@@ -1,8 +1,12 @@
 import AppKit
+import WebKit
 import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
-    let root = Bundle.main.object(forInfoDictionaryKey: "AIExperimentRoot") as! String
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
+    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AI Experiment").path
+    var window: NSWindow?
+    var webView: WKWebView?
+    var downloads = Set<WKDownload>()
     let origin = "http://127.0.0.1:8765"
     var timer: Timer?
     var opening = false
@@ -14,13 +18,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let top = NSMenuItem()
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "打开工作台", action: #selector(openWorkspace), keyEquivalent: "o")
+        appMenu.addItem(withTitle: "关闭窗口", action: #selector(closeWorkspace), keyEquivalent: "w")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "退出实验工作台", action: #selector(quit), keyEquivalent: "q")
         top.submenu = appMenu
         menu.addItem(top)
+        let edit = NSMenuItem()
+        let editMenu = NSMenu(title: "编辑")
+        for (title, selector, key) in [("撤销", "undo:", "z"), ("重做", "redo:", "Z"), ("剪切", "cut:", "x"), ("复制", "copy:", "c"), ("粘贴", "paste:", "v"), ("全选", "selectAll:", "a")] {
+            editMenu.addItem(withTitle: title, action: Selector(selector), keyEquivalent: key)
+        }
+        edit.submenu = editMenu; menu.addItem(edit)
         NSApp.mainMenu = menu
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         openWorkspace()
         timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
             self?.notificationQueue.async { self?.pollNotifications() }
@@ -39,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         var req = URLRequest(url: url)
         req.timeoutInterval = 3
         req.httpMethod = method
-        if let token = try? String(contentsOfFile: root + "/.local/desktop-token", encoding: .utf8) {
+        if let token = try? String(contentsOfFile: root + "/desktop-token", encoding: .utf8) {
             req.setValue(token.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "X-Desktop-Token")
         }
         if method == "POST" {
@@ -62,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     @objc func openWorkspace() { open(path: "") }
+    @objc func closeWorkspace() { window?.close() }
 
     func open(path: String) {
         guard Thread.isMainThread else {
@@ -73,11 +84,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         DispatchQueue.global().async {
             if !self.health() {
                 let p = Process()
-                p.executableURL = URL(fileURLWithPath: self.root + "/.venv/bin/python")
-                p.arguments = ["-m", "ai_exp_app.desktop"]
+                p.executableURL = URL(fileURLWithPath: Bundle.main.resourcePath! + "/server/ai-exp-server")
+                p.arguments = []
+                var env = ProcessInfo.processInfo.environment
+                env["AI_EXP_DATA_DIR"] = self.root
+                env["AI_EXP_CACHE_ROOT"] = self.root + "/gpu_downloads"
+                env["AI_EXP_WEB_ROOT"] = Bundle.main.resourcePath! + "/web"
+                env["PATH"] = FileManager.default.homeDirectoryForCurrentUser.path + "/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+                p.environment = env
                 p.currentDirectoryURL = URL(fileURLWithPath: self.root)
-                try? FileManager.default.createDirectory(atPath: self.root + "/.local", withIntermediateDirectories: true)
-                let log = self.root + "/.local/service.log"
+                try? FileManager.default.createDirectory(atPath: self.root, withIntermediateDirectories: true)
+                let log = self.root + "/service.log"
                 if !FileManager.default.fileExists(atPath: log) { FileManager.default.createFile(atPath: log, contents: nil) }
                 if let file = FileHandle(forWritingAtPath: log) {
                     file.seekToEndOfFile(); p.standardOutput = file; p.standardError = file
@@ -89,63 +106,122 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 }
             }
             guard self.health() else {
-                self.alert("本地服务尚未就绪", "请查看 " + self.root + "/.local/service.log")
+                self.alert("本地服务尚未就绪", "请查看 " + self.root + "/service.log")
                 DispatchQueue.main.async { self.opening = false }
                 return
             }
             DispatchQueue.main.async {
-                self.focusBrowser(self.origin + "/" + path)
+                self.showWindow(self.origin + "/" + path)
                 self.opening = false
             }
         }
     }
 
-    func focusBrowser(_ address: String) {
-        guard let url = URL(string: address), let browser = NSWorkspace.shared.urlForApplication(toOpen: url),
-              let bundle = Bundle(url: browser)?.bundleIdentifier else { return }
-        let supported = ["com.apple.Safari", "com.google.Chrome", "com.google.Chrome.beta", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser"]
-        guard supported.contains(bundle) else {
-            NSWorkspace.shared.open(url)
-            return
+    func showWindow(_ address: String) {
+        if window == nil {
+            let config = WKWebViewConfiguration()
+            config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "notifications")
+            let view = WKWebView(frame: .zero, configuration: config)
+            view.uiDelegate = self; view.navigationDelegate = self
+            let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1380, height: 920),
+                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                               backing: .buffered, defer: false)
+            win.title = "实验工作台"; win.minSize = NSSize(width: 900, height: 650)
+            win.contentView = view; win.isReleasedWhenClosed = false
+            win.setFrameAutosaveName("Workspace"); win.center()
+            window = win; webView = view
         }
-        let safari = bundle == "com.apple.Safari"
-        let selection = safari ? "set current tab of w to t" : "set active tab index of w to ti"
-        let script = """
-        on run argv
-          set targetURL to item 1 of argv
-          tell application id "\(bundle)"
-            repeat with w in windows
-              set ti to 0
-              repeat with t in tabs of w
-                set ti to ti + 1
-                try
-                  set u to URL of t
-                  if u starts with "http://127.0.0.1:8765/" or u starts with "http://localhost:8765/" then
-                    \(selection)
-                    set index of w to 1
-                    if targetURL does not end with "/" then set URL of t to targetURL
-                    activate
-                    return
-                  end if
-                end try
-              end repeat
-            end repeat
-            open location targetURL
-            activate
-          end tell
-        end run
-        """
-        DispatchQueue.global().async {
-            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            p.arguments = ["-e", script, address]
-            let errorPipe = Pipe(); p.standardError = errorPipe
-            do {
-                try p.run(); p.waitUntilExit()
-                if p.terminationStatus != 0 {
-                    let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                    self.alert("需要允许浏览器自动化", "请在系统设置 → 隐私与安全性 → 自动化中允许实验工作台控制浏览器，以复用已有页面。\n" + (String(data: data, encoding: .utf8) ?? ""))
+        if webView?.url == nil || !address.hasSuffix("/") {
+            webView?.load(URLRequest(url: URL(string: address)!, cachePolicy: .reloadIgnoringLocalCacheData))
+        }
+        window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = action.request.url else { decisionHandler(.cancel); return }
+        if action.shouldPerformDownload { decisionHandler(.download); return }
+        if url.scheme == "blob" || url.absoluteString.hasPrefix(origin + "/") {
+            decisionHandler(.allow)
+        } else {
+            decisionHandler(.cancel)
+            if ["https", "http"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
+        }
+    }
+    func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        let attachment = (response.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")?.contains("attachment") == true
+        decisionHandler(attachment || !response.canShowMIMEType ? .download : .allow)
+    }
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        downloads.insert(download); download.delegate = self
+    }
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        downloads.insert(download); download.delegate = self
+    }
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
+                  suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
+        let panel = NSSavePanel(); panel.nameFieldStringValue = suggestedFilename
+        panel.begin { result in completionHandler(result == .OK ? panel.url : nil) }
+    }
+    func downloadDidFinish(_ download: WKDownload) { downloads.remove(download) }
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        downloads.remove(download)
+        if (error as NSError).code != NSURLErrorCancelled { alert("下载失败", error.localizedDescription) }
+    }
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let panel = NSAlert(); panel.messageText = message; panel.runModal(); completionHandler()
+    }
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let panel = NSAlert(); panel.messageText = message
+        panel.addButton(withTitle: "确认"); panel.addButton(withTitle: "取消")
+        completionHandler(panel.runModal() == .alertFirstButtonReturn)
+    }
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let panel = NSAlert(); panel.messageText = prompt
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 26))
+        input.stringValue = defaultText ?? ""; panel.accessoryView = input
+        panel.addButton(withTitle: "确认"); panel.addButton(withTitle: "取消")
+        panel.window.initialFirstResponder = input
+        completionHandler(panel.runModal() == .alertFirstButtonReturn ? input.stringValue : nil)
+    }
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel(); panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.begin { response in completionHandler(response == .OK ? panel.urls : nil) }
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        let source = message.frameInfo.securityOrigin
+        guard message.frameInfo.isMainFrame, source.protocol == "http", source.host == "127.0.0.1",
+              source.port == 8765, message.body as? String == "enable" else {
+            replyHandler(nil, "不允许的通知设置请求"); return
+        }
+        let center = UNUserNotificationCenter.current()
+        let openSettings = {
+            DispatchQueue.main.async {
+                let id = Bundle.main.bundleIdentifier ?? "org.ai-experiment.workbench"
+                let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications?id=" + id)!
+                if NSWorkspace.shared.open(url) { replyHandler("settings_opened", nil) }
+                else {
+                    self.alert("通知设置", "请在系统设置 → 通知 → 实验工作台中开启允许通知。")
+                    replyHandler("manual_settings", nil)
                 }
-            } catch { self.alert("无法打开浏览器", error.localizedDescription) }
+            }
+        }
+        center.getNotificationSettings { settings in
+            if settings.authorizationStatus == .notDetermined {
+                center.requestAuthorization(options: [.alert, .sound]) { allowed, error in
+                    if let error = error { replyHandler(nil, error.localizedDescription) }
+                    else if allowed { replyHandler("granted", nil) }
+                    else { openSettings() }
+                }
+            } else { openSettings() }
         }
     }
 

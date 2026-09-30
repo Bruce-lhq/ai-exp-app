@@ -8,7 +8,7 @@ from ai_exp_remote.state import Store, atomic_json
 
 def sample(tmp_path):
     path=tmp_path/'output'
-    return dict(run_id='r',id='r',project_id='p',project={'python':'python3'},parameters={'training':{},'runtime':{'gpu_count':1}},schema={'fields':[]},snapshot={'path':str(tmp_path/'snapshot')},remote_path=str(path),status='queued',gpu_count=1,code={})
+    return dict(run_id='r',id='r',project_id='p',project={'python':'python3','data_root':str(tmp_path/'data'),'runs_root':str(tmp_path/'runs')},parameters={'training':{},'runtime':{'gpu_count':1}},schema={'fields':[]},snapshot={'path':str(tmp_path/'snapshot')},remote_path=str(path),status='queued',gpu_count=1,code={})
 
 def seed(store,run):
     with store.transaction() as s:
@@ -30,6 +30,29 @@ def test_popen_failure_pauses_queue_and_is_durable(tmp_path,monkeypatch):
     with store.transaction() as state:
         assert state['paused'] and not state['queue']
         assert state['runs']['r']['status']=='failed'
+
+def test_launch_registers_into_newest_group_manifest(tmp_path,monkeypatch):
+    store=Store(tmp_path/'state');run=sample(tmp_path);seed(store,run)
+    monkeypatch.setattr(runtime,'gpu_status',lambda:[{'index':0,'available':True}])
+    monkeypatch.setattr(runtime.subprocess,'Popen',lambda *a,**kw:None)
+    groups=tmp_path/'groups';groups.mkdir()
+    (groups/'terminal-batch.tsv').write_text('0\t0\t/srv/experiments/old\n')
+    monkeypatch.setattr(runtime,'GROUPS_ROOT',groups)
+    calls=[]
+    monkeypatch.setattr(runtime.subprocess,'run',lambda argv,**kw:calls.append(argv) or type('R',(),{'returncode':0})())
+    runtime.tick(store)
+    assert calls==[['gpu-groups','register','terminal-batch','0',str(tmp_path/'output')]]
+
+def test_register_manifest_failure_never_fails_launch(tmp_path,monkeypatch):
+    store=Store(tmp_path/'state');run=sample(tmp_path);seed(store,run)
+    monkeypatch.setattr(runtime,'gpu_status',lambda:[{'index':0,'available':True}])
+    monkeypatch.setattr(runtime.subprocess,'Popen',lambda *a,**kw:None)
+    monkeypatch.setattr(runtime,'GROUPS_ROOT',tmp_path/'missing')
+    def fail(*a,**kw):raise OSError('no gpu-groups')
+    monkeypatch.setattr(runtime.subprocess,'run',fail)
+    runtime.tick(store)
+    with store.transaction() as state:
+        assert state['runs']['r']['status']=='starting'
 
 def test_gpu_query_failure_retains_observed_completion(tmp_path,monkeypatch):
     store=Store(tmp_path/'state');run=sample(tmp_path)
@@ -80,3 +103,10 @@ def test_pause_confirm_exit_and_unified_resume(tmp_path, monkeypatch):
     with store.transaction() as state:
         assert state['queue'] == ['r']
         assert 'stop_reason' not in state['runs']['r']
+
+
+def test_deterministic_launch_configures_cublas(tmp_path):
+    run = sample(tmp_path)
+    run['parameters']['training']['deterministic'] = True
+    run['schema']['fields'] = [{'key': 'deterministic', 'flags': ['--deterministic']}]
+    assert build_launch(run['project'], run, [4])['env']['CUBLAS_WORKSPACE_CONFIG'] == ':4096:8'

@@ -161,19 +161,50 @@ def test_analysis_prefers_cached_history_for_external_run(setup, monkeypatch):
     assert result['series'][0]['points'][0]['y'] == 42
 
 
-def test_parameter_cell_saved_to_cache_and_preserved_after_refresh(setup):
+def test_existing_parameter_is_readonly_and_missing_annotation_persists(setup):
     store, cache, source, client = setup
     record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
     endpoint = f"/api/history/{record['id']}/parameters"
-    response = client.patch(endpoint, json={'field': 'lr', 'value': '  arbitrary | 字符串  '})
+    original = (Path(record['cache_dir']) / 'args.json').read_bytes()
+    response = client.patch(endpoint, json={'field': 'lr', 'value': 'tampered'})
+    assert response.status_code == 409
+    response = client.patch(endpoint, json={'field': 'missing', 'value': '  arbitrary | 字符串  '})
     assert response.status_code == 200
-    assert json.loads((Path(record['cache_dir']) / 'args.json').read_text())['lr'] == 'arbitrary | 字符串'
-    assert json.loads((source / 'args.json').read_text())['lr'] == .001
+    assert response.json()['parameters']['missing'] == 'arbitrary | 字符串'
+    assert 'missing' not in response.json()['original_parameters']
+    assert (Path(record['cache_dir']) / 'args.json').read_bytes() == original
+    assert client.patch(endpoint, json={'field': 'missing', 'value': '  changed  '}).status_code == 200
     assert client.post('/api/history/refresh').status_code == 200
-    assert json.loads((Path(record['cache_dir']) / 'args.json').read_text())['lr'] == 'arbitrary | 字符串'
+    fresh = client.get('/api/history').json()[0]
+    assert fresh['parameters']['missing'] == 'changed'
+    assert fresh['parameter_original_fields'] == ['lr']
     table = client.post('/api/analysis/table', json={'history_ids': [record['id']], 'columns': [
-        {'id': 'lr', 'kind': 'parameter', 'field': 'lr', 'title': '学习率'}]}).json()
-    assert table['rows'][0][0] == 'arbitrary | 字符串'
+        {'id': 'missing', 'kind': 'parameter', 'field': 'missing', 'title': '补充'}]}).json()
+    assert table['rows'][0][0] == 'changed'
+    # If the source later supplies this field, the recorded value takes priority.
+    (source / 'args.json').write_text('{"lr":0.001,"missing":null}')
+    assert client.post('/api/history/refresh').status_code == 200
+    fresh = client.get('/api/history').json()[0]
+    assert fresh['parameters']['missing'] is None
+    assert client.patch(endpoint, json={'field': 'missing', 'value': 'no'}).status_code == 409
+
+
+def test_legacy_overrides_migrate_only_missing_values_and_restore_original(setup):
+    store, cache, source, client = setup
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
+    record['parameter_overrides'] = {'lr': 'wrong', 'missing': '  display only  '}
+    (Path(record['cache_dir']) / 'args.json').write_text('{"lr":"wrong","missing":"display only"}')
+    store.put('history', record['id'], record)
+    client.post('/api/history/refresh')
+    updated = store.get('history', record['id'])
+    assert not updated.get('parameter_overrides')
+    assert updated['parameter_annotations'] == {'missing': 'display only'}
+    assert json.loads((Path(record['cache_dir']) / 'args.json').read_text()) == {'lr': .001}
+    assert client.get('/api/history').json()[0]['parameters']['missing'] == 'display only'
+    import io, zipfile
+    archive = zipfile.ZipFile(io.BytesIO(client.get(f"/api/history/{record['id']}/export").content))
+    assert json.loads(archive.read(f"{record['name']}/args.json")) == {'lr': .001}
+    assert json.loads(archive.read(f"{record['name']}/parameter_annotations.json")) == {'missing': 'display only'}
 
 
 def test_analysis_missing_cache_never_reads_remote(setup, monkeypatch):
@@ -209,3 +240,81 @@ def test_parsed_cache_reused_and_invalidated_by_local_refresh(setup, monkeypatch
     updated = client.post('/api/analysis/series', json=payload).json()
     assert updated['series'][0]['points'][0]['y'] == 35
     assert len(reads) == 2
+
+
+def test_imported_baseline_retains_disabled_ca_in_editor_parameters(tmp_path):
+    from ai_exp_app.history.importer import enrich
+    (tmp_path/'args.json').write_text(json.dumps({'backbone': 's1llt', 'channels': 16}))
+    (tmp_path/'model_config.json').write_text(json.dumps({'backbone': 's1llt', 'channels': 16}))
+    record = enrich({'cache_dir': str(tmp_path)})
+    assert record['parameters']['ca_lambda'] == 0
+    (tmp_path/'args.json').write_text(json.dumps({'backbone': 's1llt', 'ca_lambda': 'edited'}))
+    assert enrich({'cache_dir': str(tmp_path)})['parameters']['ca_lambda'] == 'edited'
+
+
+def test_notes_are_trimmed_and_persisted(setup):
+    store, cache, source, client = setup
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
+    response = client.patch('/api/history/' + record['id'], json={'notes': '  arbitrary 2e-4 文本  '})
+    assert response.status_code == 200
+    assert store.get('history', record['id'])['notes'] == 'arbitrary 2e-4 文本'
+    assert client.get('/api/history').json()[0]['notes'] == 'arbitrary 2e-4 文本'
+
+
+def test_running_import_includes_managed_and_refresh_invalidates_analysis_cache(setup, monkeypatch):
+    from ai_exp_app.analysis.api import create_router as analysis_router
+    from ai_exp_remote.files import file_manifest, read_file_chunk, read_file
+    store, cache, source, client = setup
+    current = source.parent / 'current'; current.mkdir()
+    (current / 'args.json').write_text('{}')
+    (current / 'run.json').write_text('{"status":"running"}')
+    metrics = current / 'metrics.jsonl'
+    metrics.write_text('{"event":"validation","tokens_seen":4000000000,"perplexity":30}\n')
+    old = import_history(store, {'kind': 'local', 'path': str(source)}, cache, name='same name')
+    store.put('runs', 'live', {'id': 'live', 'status': 'running', 'remote_path': str(current), 'display_name': 'same name'})
+    hidden = import_history(store, {'kind': 'remote', 'path': str(current)}, cache, name='same name', run_id='live', synchronize=False, visibility='tracking')
+    def rpc(alias, operation, payload):
+        if operation == 'file_manifest':
+            result = file_manifest(payload)
+            (current / 'run.json').write_text('{"status":"running","tick":2}')
+            return result
+        return {'read_file_chunk': read_file_chunk, 'read_file': read_file}[operation](payload)
+    monkeypatch.setattr('ai_exp_app.history.sync.rpc', rpc)
+    client.app.include_router(analysis_router(store))
+    response = client.post('/api/history/sync-running').json()
+    assert response['count'] == 1
+    assert store.get('history', 'live')['visibility'] == 'visible'
+    assert store.get('history', 'live')['status'] == 'running'
+    assert store.get('history', old['id'])['source']['path'] == str(source)
+    body = {'history_ids': ['live'], 'metric': 'val_ppl'}
+    assert client.post('/api/analysis/series', json=body).json()['series'][0]['points'][-1] == {'x': 4e9, 'y': 30}
+    revision = next(r for r in client.get('/api/history').json() if r['id'] == 'live')['content_revision']
+    with metrics.open('a') as stream: stream.write('{"event":"validation","tokens_seen":6000000000,"perplexity":25}\n')
+    client.post('/api/history/import', json={'source': hidden['source']})
+    assert client.post('/api/analysis/series', json=body).json()['series'][0]['points'][-1] == {'x': 6e9, 'y': 25}
+    assert next(r for r in client.get('/api/history').json() if r['id'] == 'live')['content_revision'] != revision
+    table = client.post('/api/analysis/table', json={'history_ids': ['live'], 'columns': [{'kind': 'metric', 'field': 'val_ppl', 'aggregate': 'final'}]}).json()
+    assert table['rows'] == [['25.00 @6.00B']]
+
+
+def test_nested_original_parameters_and_annotation_export_roundtrip(setup):
+    import io, zipfile
+    store, cache, source, client = setup
+    (source / 'args.json').write_text('{"training":{"lr":0,"nullable":null},"runtime":{"gpu_count":1}}')
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, cache)
+    endpoint = f"/api/history/{record['id']}/parameters"
+    for field in ('lr', 'nullable', 'gpu_count', 'training', 'runtime'):
+        assert client.patch(endpoint, json={'field': field, 'value': 'overwrite'}).status_code == 409
+    assert client.patch(endpoint, json={'field': 'missing', 'value': '  10B  '}).status_code == 200
+    archive = zipfile.ZipFile(io.BytesIO(client.get(f"/api/history/{record['id']}/export").content))
+    source2 = source.parent / 'exported'
+    source2.mkdir()
+    for name in ('args.json', 'parameter_annotations.json'):
+        (source2 / name).write_bytes(archive.read(record['name'] + '/' + name))
+    restored = import_history(store, {'kind': 'local', 'path': str(source2)}, cache)
+    assert restored['parameters']['missing'] == '10B'
+    assert 'missing' not in restored['parameter_original_fields']
+    assert restored['original_parameters']['training']['lr'] == 0
+    endpoint2 = f"/api/history/{restored['id']}/parameters"
+    assert client.patch(endpoint2, json={'field': 'missing', 'value': '8B'}).status_code == 200
+    assert json.loads((Path(restored['cache_dir']) / 'args.json').read_text())['training']['lr'] == 0

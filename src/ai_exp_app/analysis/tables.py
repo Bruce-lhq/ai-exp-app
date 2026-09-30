@@ -3,6 +3,7 @@ import json
 import math
 from .statistics import aggregate, parameter_delta
 from .templates import normalize_columns
+from ai_exp_app.parameters.validation import parse_number
 
 
 def format_value(value, style=None, signed=False):
@@ -10,18 +11,27 @@ def format_value(value, style=None, signed=False):
         return '—'
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         return str(value) if not isinstance(value, (dict, list)) else json.dumps(value, ensure_ascii=False)
-    style = style if isinstance(style, dict) else {'type': style or 'compact'}
-    digits = max(0, min(12, int(style.get('digits', style.get('decimals', 4)))))
-    kind = style.get('type', style.get('mode', 'compact'))
+    if not math.isfinite(value):
+        return '—'
+    style = style if isinstance(style, dict) else {'type': style or 'fixed'}
+    digits = max(0, min(12, int(style.get('digits', style.get('decimals', 2)))))
+    kind = style.get('type', style.get('mode', 'fixed'))
     sign = '+' if signed else ''
-    if kind == 'fixed':
-        return format(value, f'{sign}.{digits}f')
-    if kind == 'scientific':
-        return format(value, f'{sign}.{digits}e')
-    for suffix, factor in [('B', 1e9), ('M', 1e6), ('K', 1e3)]:
-        if abs(value) >= factor:
-            return format(value / factor, f'{sign}.{digits}g') + suffix
-    return format(value, f'{sign}.{max(digits, 1)}g')
+    if 0 < abs(value) < 0.01 or kind == 'scientific':
+        places = digits if kind == 'fixed' else max(0, digits - 1)
+        result = format(value, f'{sign}.{places}e')
+        mantissa, exponent = result.split('e')
+        return mantissa.rstrip('0').rstrip('.') + 'e' + str(int(exponent))
+    units = [('', 1), ('K', 1e3), ('M', 1e6), ('B', 1e9), ('T', 1e12)]
+    unit = max(i for i, (_, factor) in enumerate(units) if abs(value) >= factor) if abs(value) >= 1 else 0
+    spec = f'{sign}.{digits}f' if kind == 'fixed' else f'{sign}.{max(digits, 1)}g'
+    result = format(value / units[unit][1], spec)
+    if abs(float(result)) >= 1000 and unit < len(units) - 1:
+        unit += 1
+        result = format(value / units[unit][1], spec)
+    if 'e' in result:
+        result = format(float(result), f'{sign}f').rstrip('0').rstrip('.')
+    return result + units[unit][0]
 
 
 def metric_value(run, column):
@@ -31,13 +41,15 @@ def metric_value(run, column):
 def format_speed(value, style=None, signed=False):
     if value is None:
         return '—'
-    style = style if isinstance(style, dict) else {'type': style or 'compact'}
-    if style.get('type', style.get('mode', 'compact')) in {'fixed', 'scientific'}:
-        result = format_value(value / 1000, style, signed)
-    else:
-        digits = max(1, min(12, int(style.get('digits', style.get('decimals', 4)))))
-        result = format(value / 1000, f"{'+' if signed else ''}.{digits}g")
-    return result + ' K tok/s'
+    return format_value(value, style, signed) + ' tok/s'
+
+
+def token_position(tokens):
+    value = tokens / 1e9
+    # Keep trailing zeroes: 6B -> 6.00B, 0.2B -> 0.200B.
+    rounded = float(format(value, '.3g'))
+    decimals = max(0, 2 - math.floor(math.log10(abs(rounded)))) if rounded else 2
+    return format(rounded, f'.{decimals}f') + 'B'
 
 
 def metric_position(run, column, value):
@@ -54,13 +66,9 @@ def escape_cell(value):
 def render_table(runs, columns, baseline=None):
     columns = normalize_columns(columns)
     by_id = {c['id']: c for c in columns}
-    rows, warnings, footnotes = [], [], []
+    rows, warnings = [], []
     for run in runs:
         row = []
-        stopped = run.get('status') in {'stopped', 'paused'}
-        stop_tokens = run.get('stop_tokens')
-        if stopped and stop_tokens is None:
-            stop_tokens = max((r['tokens'] for r in run.get('records', []) if r.get('tokens') is not None), default=None)
         for c in columns:
             kind, signed, suffix = c['kind'], False, ''
             speed = kind == 'metric' and c['field'] == 'tokens_per_second'
@@ -71,18 +79,27 @@ def render_table(runs, columns, baseline=None):
             elif kind == 'parameter':
                 params = run.get('parameters', {})
                 value = params.get(c['field'], params.get('training', {}).get(c['field'], params.get('runtime', {}).get(c['field'])))
+                if isinstance(value, str):
+                    try:
+                        value = parse_number(value)
+                    except ValueError:
+                        pass
             elif kind == 'metric':
                 value = metric_value(run, c)
                 if c['aggregate'] in {'min', 'max'} and value is not None:
                     tokens = metric_position(run, c, value)
                     if tokens is not None:
-                        suffix = f' @{tokens / 1e9:g}B'
+                        suffix = ' @' + token_position(tokens)
                     else:
                         warnings.append(f"{run.get('name', run['id'])}：{c['title']} 缺少极值对应的 token 位置")
-                elif stopped and stop_tokens is not None and value is not None:
-                    suffix = f' @{stop_tokens / 1e9:g}B'
-                    if run.get('stop_tokens') is None:
-                        footnotes.append(f"{run.get('name', run['id'])}：停止进度未知，@ 标注为最后已记录进度。")
+                elif c['aggregate'] == 'final' and value is not None:
+                    records = [r for r in run.get('records', []) if r['metric'] == c['field']
+                               and isinstance(r.get('value'), (int, float)) and math.isfinite(r['value'])]
+                    tokens = records[-1].get('tokens') if records else None
+                    if isinstance(tokens, (int, float)) and math.isfinite(tokens):
+                        suffix = ' @' + token_position(tokens)
+                    else:
+                        warnings.append(f"{run.get('name', run['id'])}：{c['title']} 缺少末值对应的 token 位置")
             elif kind in {'metric_delta', 'parameter_delta'}:
                 if baseline and run['id'] == baseline['id']:
                     row.append('-')
@@ -113,6 +130,4 @@ def render_table(runs, columns, baseline=None):
     markdown = '\n'.join(['| ' + ' | '.join(map(escape_cell, headers)) + ' |',
                           '| ' + ' | '.join('---' for _ in headers) + ' |'] +
                          ['| ' + ' | '.join(map(escape_cell, row)) + ' |' for row in rows])
-    if footnotes:
-        markdown += '\n\n' + '\n'.join(escape_cell(n) for n in dict.fromkeys(footnotes))
     return {'headers': headers, 'rows': rows, 'markdown': markdown, 'warnings': list(dict.fromkeys(warnings))}

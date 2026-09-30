@@ -11,3 +11,4 @@ web/test-results/
 web/playwright-report/
 dist/
 .DS_Store
+config.local.json

@@ -6,7 +6,9 @@ import shlex
 import subprocess
 import time
 
-DEFAULT_AGENT = '/your_exp/ai_exp_app/agent.pyz'
+from ai_exp_app.config import local_settings
+
+DEFAULT_AGENT = '.local/share/ai-exp-app/agent.pyz'
 
 class RemoteError(RuntimeError):
     def __init__(self, code, message, details=None):
@@ -27,7 +29,7 @@ def build_ssh_argv(ssh_path, alias, agent_path):
 def call_remote(alias, request, timeout_s=20):
     wrapper = Path.home() / '.local/bin/ssh'
     argv = build_ssh_argv(str(wrapper) if wrapper.exists() else 'ssh', alias,
-                          os.environ.get('AI_EXP_REMOTE_AGENT', DEFAULT_AGENT))
+                          os.environ.get('AI_EXP_REMOTE_AGENT', local_settings()['remote_agent']))
     last_error = None
     for attempt in range(2):
         try:

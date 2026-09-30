@@ -45,3 +45,33 @@ def test_schema_uses_parser_without_main(tmp_path):
     result=read_schema(dict(path=str(tmp_path),python=sys.executable))
     assert result['fields'][0]['key']=='lr'
     assert len(result['fields'])==1
+
+
+def test_failed_run_log_contains_launcher_traceback(tmp_path):
+    state = Store(tmp_path/'state')
+    run_dir = tmp_path/'run'; run_dir.mkdir()
+    attempt = tmp_path/'attempt'; attempt.mkdir()
+    (run_dir/'train.log').write_text('CONFIG_1/1\n')
+    (attempt/'launch.log').write_text('CONFIG_1/1\nRuntimeError: CUDA failure\n')
+    with state.transaction() as s:
+        s['runs']['failed'] = {'id': 'failed', 'status': 'failed', 'remote_path': str(run_dir), 'attempt_dir': str(attempt)}
+    result = handle(request('read_log', {'run_id': 'failed'}), state.root, False)
+    assert 'RuntimeError: CUDA failure' in result['content']
+
+
+def test_append_snapshot_reads_original_prefix_but_rejects_replacement(tmp_path):
+    import base64
+    f = tmp_path / 'metrics.jsonl'
+    f.write_bytes(b'first\n')
+    item = file_manifest({'path': str(tmp_path)})['files'][0]
+    request = dict(path=str(tmp_path), name=f.name, snapshot_size=item['size'], inode=item['inode'], mtime_ns=item['mtime_ns'])
+    with f.open('ab') as stream: stream.write(b'second\n')
+    assert base64.b64decode(read_file_chunk(request)['data']) == b'first\n'
+    replacement = tmp_path / 'replacement'
+    replacement.write_bytes(b'changed file\n')
+    replacement.replace(f)
+    with pytest.raises(AgentError): read_file_chunk(request)
+    item = file_manifest({'path': str(tmp_path)})['files'][0]
+    request.update(inode=item['inode'], snapshot_size=item['size'])
+    f.write_bytes(b'x')
+    with pytest.raises(AgentError): read_file_chunk(request)

@@ -7,11 +7,11 @@ export function parseValue(text: string, field: Field): unknown {
   if (field.kind === "boolean") return text === "true";
   const match = text
     .trim()
-    .match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([kmb])?$/i);
+    .match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([kmbt])?$/i);
   if (!match) throw new Error("请输入有效数值，可使用 K、M、B");
   const value =
     Number(match[1]) *
-    ({ k: 1e3, m: 1e6, b: 1e9 }[match[2]?.toLowerCase() as "k"] || 1);
+    ({ k: 1e3, m: 1e6, b: 1e9, t: 1e12 }[match[2]?.toLowerCase() as "k"] || 1);
   if (
     !Number.isFinite(value) ||
     (field.kind === "integer" && !Number.isSafeInteger(value))
@@ -30,4 +30,14 @@ export function move<T>(list: T[], from: number, to: number): T[] {
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
+}
+
+// Presentation only: never round the numeric parameter stored in the editor.
+export function displayNumber(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return value == null ? "" : String(value);
+  if (value !== 0 && Math.abs(value) < 0.01) return value.toExponential().replace(/e\+?(-?)0*(\d+)/, "e$1$2");
+  for (const [suffix, factor] of [["T", 1e12], ["B", 1e9], ["M", 1e6], ["K", 1e3]] as const) {
+    if (Math.abs(value) >= factor) return `${value / factor}${suffix}`;
+  }
+  return String(value);
 }

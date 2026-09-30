@@ -1,4 +1,4 @@
-TERMINAL = {'completed', 'stopped', 'failed', 'paused'}
+TERMINAL = {'completed', 'stopped', 'failed', 'paused', 'external_exited'}
 
 
 def should_auto_add(visibility: str, status: str) -> bool:

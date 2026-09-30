@@ -21,6 +21,30 @@ def test_repair_does_not_replace_invalid_values():
     assert {w["field"] for w in result["warnings"]} == {"old", "mode"}
 
 
+def test_historical_args_ignore_managed_metadata_but_warn_for_unknown_training_fields():
+    schema = [
+        {"key": "learning_rate", "kind": "number", "has_default": True, "default": .01},
+        {"key": "seed", "kind": "integer", "has_default": True, "default": 42},
+        {"key": "resume", "kind": "string", "has_default": True, "default": None},
+        {"key": "config_index", "kind": "integer", "has_default": True, "default": 1},
+    ]
+    arguments = {
+        "learning_rate": .00005, "scaling_up": 2,
+        "run_dir": "/runs/original", "data_root": "/datasets/train",
+        "resume": "/runs/original/latest.pt", "allow_nonexact_resume": False,
+        "allow_world_size_change": False, "config_index": 1, "config_total": 1,
+        "config_name": "historical-config", "config_description": None,
+    }
+    result = validate_parameters(schema, arguments)
+    assert result["parameters"]["training"] == {"learning_rate": .00005, "seed": 42}
+    assert result["errors"] == []
+    assert result["warnings"] == [
+        {"field": "scaling_up", "message": "当前代码没有此参数，已忽略"},
+        {"field": "seed", "message": "未填写，已使用源码默认值"},
+    ]
+    assert arguments["resume"] == "/runs/original/latest.pt"
+
+
 def test_default_project_and_cached_schema_survive_router_reload(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

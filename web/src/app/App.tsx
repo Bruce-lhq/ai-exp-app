@@ -8,12 +8,15 @@ import {
   Check,
   X,
   Bell,
+  Settings,
 } from "lucide-react";
 import { api, type Parameters } from "./api";
+import { enableSystemNotifications } from "./notifications";
 import { ParameterPage } from "../features/parameters/ParameterPage";
 import { MonitorPage } from "../features/monitor/MonitorPage";
 import { HistoryPage } from "../features/history/HistoryPage";
 import { AnalysisPage } from "../features/analysis/AnalysisPage";
+import { LocalSettingsDialog, type SettingsResponse } from "./LocalSettings";
 export default function App() {
   const [page, setPage] = useState("monitor"),
     [message, setMessage] = useState(""),
@@ -21,12 +24,18 @@ export default function App() {
     [historical, setHistorical] = useState<Parameters | null>(null);
   const [loading, setLoading] = useState(0);
   const [configureVisited, setConfigureVisited] = useState(false);
+  const [localSettings, setLocalSettings] = useState<SettingsResponse | null>(null);
   useEffect(() => {
     if (page === "configure") setConfigureVisited(true);
   }, [page]);
   const [notices,setNotices]=useState<any[]>([]),[noticeOpen,setNoticeOpen]=useState(false);
   const seen=useRef(new Set<string>());
   const notify = (m: string) => setMessage(m);
+  useEffect(() => {
+    api<SettingsResponse>("/api/settings/local")
+      .then((settings) => { if (settings.configured === false) setLocalSettings(settings); })
+      .catch((error) => notify(error.message));
+  }, []);
   useEffect(()=>{
     const poll=()=>api<any[]>("/api/notifications").then(list=>{
       setNotices(list);
@@ -112,6 +121,10 @@ export default function App() {
             {nav.find((n) => n.id === page)?.name}
           </span>
           <div className="row">
+            <button className="icon" title="工作空间设置" aria-label="工作空间设置" onClick={async () => {
+              try { setLocalSettings(await api<SettingsResponse>("/api/settings/local")); }
+              catch (error) { notify((error as Error).message); }
+            }}><Settings size={17} /></button>
             <span
               title={connection.error || "SSH 连接正常"}
               className="connection"
@@ -128,7 +141,7 @@ export default function App() {
             </button>
           </div>
         </header>
-        {noticeOpen&&<section className="panel notifications"><div className="panel-heading"><h3>实验通知</h3><button onClick={async()=>{try{if("Notification" in window){const p=await Notification.requestPermission();notify(p==='granted'?'系统通知已启用':'系统通知未授权')}}catch(e){notify((e as Error).message)}}}>启用系统通知</button></div>{notices.length?notices.map(n=><button className="run-row" key={n.id} onClick={async()=>{try{await api(`/api/notifications/${n.id}/read`,{});setNotices(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x));history.replaceState(null,'',`?run=${encodeURIComponent(n.run_id)}`);setPage('monitor');setNoticeOpen(false)}catch(e){notify((e as Error).message)}}}><span><strong>{n.title}</strong><small>{n.body}</small></span><span>{n.read?'已读':'未读'}</span></button>):<p className="empty">暂无实验通知</p>}</section>}
+        {noticeOpen&&<section className="panel notifications"><div className="panel-heading"><h3>实验通知</h3><button onClick={async()=>{try{notify(await enableSystemNotifications())}catch(e){notify((e as Error).message)}}}>启用系统通知</button></div>{notices.length?notices.map(n=><button className="run-row" key={n.id} onClick={async()=>{try{await api(`/api/notifications/${n.id}/read`,{});setNotices(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x));history.replaceState(null,'',`?run=${encodeURIComponent(n.run_id)}`);setPage('monitor');setNoticeOpen(false)}catch(e){notify((e as Error).message)}}}><span><strong>{n.title}</strong><small>{n.body}</small></span><span>{n.read?'已读':'未读'}</span></button>):<p className="empty">暂无实验通知</p>}</section>}
         <main>
           {(page === "configure" || configureVisited) && <div hidden={page !== "configure"}>
             <ParameterPage
@@ -164,6 +177,7 @@ export default function App() {
           </button>
         </div>
       )}
+      {localSettings && <LocalSettingsDialog initial={localSettings.local_settings} firstRun={!localSettings.configured} close={() => setLocalSettings(null)} notify={notify} />}
       {page !== "analysis" && loading > 0 && <div className="loading-overlay" role="status" aria-label="正在加载"><span className="spinner" /> 正在加载…</div>}
     </div>
   );

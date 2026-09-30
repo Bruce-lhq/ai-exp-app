@@ -22,6 +22,57 @@ def ca_window_metrics(values):
             result[name] = sum(samples) / len(samples)
     return result
 
+def run_progress(run):
+    """Mirror gpu-dashboard's progress text and post-warmup windowed ETA.
+
+    Reads only args.json and metrics.jsonl; remaining is computed from
+    precise elapsed_s events anchored at the warmup boundary, like the
+    dashboard, so both views agree."""
+    root = Path(run['remote_path'])
+    try:
+        args = json.loads((root/'args.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    target = args.get('max_tokens')
+    if not isinstance(target, (int, float)) or target <= 0:
+        return {}
+    target = int(target)
+    warmup = args.get('warmup_tokens')
+    anchor_tokens = int(warmup) if isinstance(warmup, (int, float)) and warmup > 0 else int(0.02*target)
+    events, val_acc, tokens = [], 0, None
+    try:
+        with (root/'metrics.jsonl').open(errors='replace') as stream:
+            for line in stream:
+                try: item = json.loads(line)
+                except ValueError: continue
+                seen = item.get('tokens_seen')
+                elapsed = item.get('elapsed_s')
+                if not isinstance(seen, (int, float)) or not isinstance(elapsed, (int, float)) or elapsed < 0: continue
+                tokens = int(seen)
+                if item.get('event') == 'validation':
+                    step = item.get('tokens')
+                    if isinstance(step, (int, float)): val_acc += int(step)
+                events.append((tokens, tokens + val_acc, float(elapsed)))
+    except OSError:
+        return {}
+    if tokens is None:
+        return {}
+    def billions(value):
+        if value < 1e7:
+            scale, suffix = (1e6, 'M') if value >= 1e6 else (1e3, 'K') if value >= 1e3 else (1, '')
+            return f'{value / scale:.2f}'.rstrip('0').rstrip('.') + suffix
+        return f'{int(value/1e9)}B' if value >= 1e9 and value % 1e9 == 0 else f'{value/1e9:.2f}B'
+    result = {'progress': f'{billions(tokens)}/{billions(target)}'}
+    anchored = [e for e in events if e[0] >= anchor_tokens]
+    if run['status'] in ('starting','running','stopping') and len(anchored) >= 2:
+        window_tokens = events[-1][1] - anchored[0][1]
+        window_elapsed = events[-1][2] - anchored[0][2]
+        if window_tokens > 0 and window_elapsed > 0:
+            remaining = 0.0 if tokens >= target else (target - tokens)/(window_tokens/window_elapsed)
+            minutes = max(1, int(round(remaining/60)))
+            result['remaining'] = f'{minutes//60}h{minutes%60:02d}m' if minutes >= 60 else f'{minutes}m'
+    return result
+
 def metric_series(payload):
     metric, axis = payload.get('metric', 'val_ppl'), payload.get('axis', 'tokens')
     if axis not in {'tokens', 'step', 'elapsed_s'}:
@@ -90,7 +141,12 @@ def read_file(payload):
 def file_manifest(payload):
     result=inspect_files(payload)
     root=directory(payload['path'])
-    for item in result['files']:item['mtime_ns']=(root/item['name']).stat().st_mtime_ns
+    checkpoint=root/'latest.pt'
+    if payload.get('checkpoint') and checkpoint.is_file() and not checkpoint.is_symlink():
+        result['files'].append({'name':'latest.pt','size':checkpoint.stat().st_size})
+    for item in result['files']:
+        stat = (root/item['name']).stat()
+        item.update(size=stat.st_size, mtime_ns=stat.st_mtime_ns, inode=stat.st_ino)
     return result
 
 def read_file_chunk(payload):
@@ -99,9 +155,20 @@ def read_file_chunk(payload):
     if name not in ALLOWED or (root/name).is_symlink():raise AgentError('FILE_NOT_ALLOWED','不允许读取此文件')
     path=root/name
     before=path.stat()
-    if payload.get('mtime_ns') is not None and before.st_mtime_ns!=payload['mtime_ns']:raise AgentError('FILE_CHANGED','文件发生变化，请重新同步')
+    snapshot = payload.get('snapshot_size')
+    append_only = name in {'metrics.jsonl', 'train.log', 'launch.log'} and snapshot is not None
+    def unchanged(stat):
+        if append_only:
+            return stat.st_ino == payload.get('inode') and stat.st_size >= snapshot
+        return payload.get('mtime_ns') is None or stat.st_mtime_ns == payload['mtime_ns']
+    if not unchanged(before): raise AgentError('FILE_CHANGED','文件发生变化，请重新同步')
+    offset = max(0, int(payload.get('offset', 0)))
+    length = min(1024*1024, max(1, int(payload.get('length', 1024*1024))))
+    if append_only: length = min(length, max(0, snapshot - offset))
     with path.open('rb') as stream:
-        stream.seek(max(0,int(payload.get('offset',0))))
-        data=stream.read(min(1024*1024,max(1,int(payload.get('length',1024*1024)))))
-    if path.stat().st_mtime_ns!=before.st_mtime_ns:raise AgentError('FILE_CHANGED','文件发生变化，请重新同步')
+        stream.seek(offset)
+        data=stream.read(length)
+    after = path.stat()
+    if not unchanged(after) or after.st_ino != before.st_ino or (not append_only and after.st_mtime_ns != before.st_mtime_ns):
+        raise AgentError('FILE_CHANGED','文件发生变化，请重新同步')
     return {'data':base64.b64encode(data).decode()}

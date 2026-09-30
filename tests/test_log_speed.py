@@ -26,7 +26,7 @@ def test_log_speed_units_and_missing_progress(tmp_path):
     assert not read_log_metrics(tmp_path / 'missing')['records']
 
 
-def test_speed_table_fixed_k_units_extrema_and_delta():
+def test_speed_table_auto_units_extrema_and_delta():
     columns = [{'id':method, 'kind':'metric', 'field':'tokens_per_second', 'aggregate':method, 'title':method}
                for method in ['min', 'max', 'final']]
     columns.append({'id':'delta', 'kind':'metric_delta', 'parent_id':'final', 'title':'delta'})
@@ -36,7 +36,7 @@ def test_speed_table_fixed_k_units_extrema_and_delta():
         {'metric':'tokens_per_second', 'value':120000, 'tokens':3e7}]}
     baseline = {'id':'b', 'records':[{'metric':'tokens_per_second', 'value':100000, 'tokens':3e7}]}
     assert render_table([run], columns, baseline)['rows'][0] == [
-        '67 K tok/s @0.01B', '1250 K tok/s @0.02B', '120 K tok/s', '+20 K tok/s']
+        '67.00K tok/s @0.0100B', '1.25M tok/s @0.0200B', '120.00K tok/s @0.0300B', '+20.00K tok/s']
 
 
 def test_log_cache_refresh_does_not_reparse_metrics_or_mutate_cache(tmp_path, monkeypatch):

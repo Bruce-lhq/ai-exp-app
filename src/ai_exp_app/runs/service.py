@@ -4,6 +4,7 @@ import base64
 from fastapi import APIRouter, HTTPException
 from ai_exp_app.projects.api import project_or_404, remote, schema_for
 from ai_exp_app.parameters.validation import validate_parameters
+from ai_exp_app.config import local_settings
 
 
 def apply_started_event(store, event: dict) -> bool:
@@ -47,6 +48,8 @@ class RunService:
                 old = self.store.get("runs", id) or {}
                 project = self.store.get("projects", run.get("project_id", old.get("project_id", ""))) or {}
                 combined = {**old, **run, "id": id, "run_id": id, "ssh_alias": project.get("ssh_alias", self.alias())}
+                if 'remaining' not in run:
+                    combined.pop('remaining', None)
                 combined["run_dir"] = run.get("run_dir") or run.get("remote_path") or old.get("run_dir")
                 combined["remote_path"] = combined["run_dir"]
                 self.store.put("runs", id, combined)
@@ -56,6 +59,13 @@ class RunService:
             for run in external:
                 existing = self.store.get("runs", run["id"]) or {}
                 self.store.put("runs", run["id"], {**existing, **run})
+            # Drop locally cached terminal runs the remote no longer reports; only
+            # trust the absence when the external inventory itself was readable.
+            if "external_error" not in result:
+                seen = {run["id"] for run in external}
+                for row in self.store.list("runs"):
+                    if row.get("external") and row["id"] not in seen:
+                        self.store.delete("runs", row["id"])
             for event in result.get("events", []):
                 apply_started_event(self.store, event)
                 if event.get("kind") == "failed":
@@ -101,7 +111,8 @@ class RunService:
         @router.get("/runs")
         def runs():
             history = self.store.list('history')
-            return [self.display_run(run, history) for run in self.store.list("runs")]
+            return [self.display_run(run, history) for run in self.store.list("runs")
+                    if not (run.get('monitor_hidden') and run.get('status') in {'paused', 'stopped', 'failed', 'completed'})]
 
         @router.get("/runs/{id}")
         def run(id: str):
@@ -122,8 +133,13 @@ class RunService:
             if mode not in {"start", "queue"}:
                 raise HTTPException(422, "请选择启动或加入队列")
             config = project.get("config", {})
-            payload = {"run_id": id, "project_id": project["id"], "display_name": body.get("display_name") or body.get("name") or project["name"], "parameters": result["parameters"], "code": code, "mode": mode, "project": {"path": project["remote_path"], "python": config.get("python", "/your_exp/venv/bin/python"), "runs_root": config.get("runs_root", "/your_exp/runs"), "data_root": config.get("data_root", "/your_exp/data/fineweb_edu_gpt2_100B")}}
+            payload = {"run_id": id, "project_id": project["id"], "display_name": body.get("display_name") or body.get("name") or project["name"], "parameters": result["parameters"], "code": code, "mode": mode, "project": {"path": project["remote_path"], "python": config.get("python", local_settings(self.store)["remote_python"]), "runs_root": config.get("runs_root", local_settings(self.store)["remote_runs_root"]), "data_root": config.get("data_root", local_settings(self.store)["remote_data_root"])}}
             request_id = body.get("request_id") or id
+            if body.get('resume_ticket'):
+                draft = self.store.get('resume_drafts', body['resume_ticket'])
+                if not draft or draft['ssh_alias'] != project['ssh_alias']:
+                    raise HTTPException(422, '续跑来源无效，请从云端历史重新载入')
+                payload['resume'] = {'path': draft['path'], 'identity': draft['identity'], 'history_id': draft['history_id']}
             pending = self.store.get("submissions", request_id)
             if pending and pending["payload"] != payload:
                 raise HTTPException(409, "此请求标识已用于不同参数")
@@ -178,6 +194,21 @@ class RunService:
         def resume(id: str, body: dict = {}):
             item = self.run(id)
             result = remote(item.get("ssh_alias", self.alias()), "resume", {"run_id": id, "mode": body.get("mode", "queue")}, body.get("request_id"))
+            self.refresh()
+            return result
+
+        @router.post("/runs/{id}/remove")
+        def remove(id: str, body: dict):
+            item = self.run(id)
+            if body.get("confirmed") is not True:
+                raise HTTPException(409, "移除记录需要确认")
+            if not item.get('external'):
+                if item.get('status') not in {'paused', 'stopped', 'failed', 'completed'}:
+                    raise HTTPException(409, '仅允许删除已结束或已暂停实验的监控记录')
+                self.store.put('runs', id, {**item, 'monitor_hidden': True})
+                return {'id': id, 'removed': True}
+            result = remote(item.get("ssh_alias", self.alias()), "remove_external", {"run_id": id, "confirmed": True}, body.get("request_id"))
+            self.store.delete("runs", id)
             self.refresh()
             return result
 

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pause, Play, Square, GripVertical, RefreshCw } from "lucide-react";
+import { Pause, Play, Square, GripVertical, RefreshCw, Trash2 } from "lucide-react";
 import { api, items, type Run } from "../../app/api";
 import { Empty, Modal } from "../../app/ui";
 import { move } from "../parameters/values";
 import {
   ExperimentChart,
-  palette,
+  seriesColors,
   type Series,
   type ChartSettings,
 } from "../analysis/ExperimentChart";
@@ -32,9 +32,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [log, setLog] = useState(""),
     [stop, setStop] = useState(""),
     [stopAction, setStopAction] = useState<"stop" | "pause">("stop"),
-    [resumeOpen, setResumeOpen] = useState(false),
-    [resumeId, setResumeId] = useState(""),
-    [resuming, setResuming] = useState(false),
+    [remove, setRemove] = useState(""),
     [pauseAlso, setPauseAlso] = useState(false),
     [drag, setDrag] = useState(0),
     [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
@@ -157,7 +155,6 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           <p>运行留在云端。断开工作台，不会中断训练与队列。</p>
         </div>
         <div className="row">
-        <button onClick={() => { setResumeId(""); setResumeOpen(true); }}><Play size={15} />严格续跑</button>
         <button onClick={() => action(() => api("/api/connection/refresh", {}))}>
           <RefreshCw size={15} />
           刷新
@@ -178,7 +175,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           const from = orderedSeries.findIndex((x) => x.id === appearanceDrag); if (from < 0 || from === i) return;
           const next = [...orderedSeries]; const [item] = next.splice(from, 1); next.splice(i, 0, item);
           setAppearance(Object.fromEntries(next.map((x, index) => [x.id, { ...appearance[x.id], order: index }])));
-        }}><GripVertical size={14} /><input type="color" value={appearance[s.id]?.color || palette[i % palette.length]} onChange={(e) => {
+        }}><GripVertical size={14} /><input type="color" value={seriesColors(orderedSeries, appearance)[i]} onChange={(e) => {
           if (Object.entries(appearance).some(([id, value]) => id !== s.id && value.color?.toLowerCase() === e.target.value.toLowerCase())) { notify("每条曲线需要使用不同颜色"); return; }
           setAppearance((a) => ({ ...a, [s.id]: { ...a[s.id], color: e.target.value } }));
         }} /><input aria-label={`${s.name} 图例`} value={appearance[s.id]?.name ?? s.name} onChange={(e) => setAppearance((a) => ({ ...a, [s.id]: { ...a[s.id], name: e.target.value.trim() } }))} /></div>)}</details>}
@@ -300,6 +297,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               {runs.find((x) => x.id === selected)?.status === "external_running" && (runs.find((x) => x.id === selected)?.adopted
                 ? <button onClick={() => { setStopAction('pause'); setPauseAlso(false); setStop(selected); }}><Pause size={14} />暂停实验</button>
                 : <button onClick={() => action(async () => { await api(`/api/runs/${selected}/adopt`, {}); notify('进程身份已验证并接管，训练继续运行'); })}>接管进程</button>)}
+              {["paused", "stopped", "failed", "completed", "external_exited"].includes(runs.find((x) => x.id === selected)?.status || "") && (
+                <button className="danger" onClick={() => setRemove(selected)}><Trash2 size={14} />删除记录</button>
+              )}
             </div>
           </div>
           <details open>
@@ -311,7 +311,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       {stop && (
         <Modal title={stopAction === "pause" ? "暂停实验？" : "停止实验？"} close={() => setStop("")}>
           <p>当前训练进程将退出并释放 GPU，不额外保存 checkpoint。最近 checkpoint 之后的进度需要重跑。</p>
-          {runs.find((r) => r.id === stop)?.external && <p className="warning">这是终端启动的实验。暂停后暂不能通过工作台续跑；外部 checkpoint 续跑入口尚待接入。外部启动脚本的后续任务不会由工作台暂停。</p>}
+          {runs.find((r) => r.id === stop)?.external && <p className="warning">暂停后可在历史管理中载入续跑到编辑区。外部启动脚本的后续任务不会由工作台暂停。</p>}
           {!runs.find((r) => r.id === stop)?.external && <label className="check">
             <input
               type="checkbox"
@@ -340,20 +340,27 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           </footer>
         </Modal>
       )}
-      {resumeOpen && <Modal title="严格续跑" close={() => setResumeOpen(false)}>
-        <p>选择工作台管理的实验，从其最近完整 checkpoint 恢复。代码、参数、GPU 数和训练状态通过校验后，实验加入队尾。</p>
-        <label>续跑实验<select aria-label="续跑实验" value={resumeId} onChange={(e) => setResumeId(e.target.value)}>
-          <option value="">选择实验</option>
-          {runs.filter((r) => !r.external && ["paused", "stopped", "failed"].includes(r.status)).map((r) => <option key={r.id} value={r.id}>{r.display_name} · {statusNames[r.status]}</option>)}
-        </select></label>
-        <p className="muted">外部目录的 checkpoint 暂不支持导入；仅有模型权重不能严格续跑。</p>
-        <footer><button onClick={() => setResumeOpen(false)}>取消</button><button className="primary" disabled={!resumeId || resuming} onClick={async () => {
-          setResuming(true);
-          try { await api(`/api/runs/${resumeId}/resume`, {}); setResumeOpen(false); notify("严格校验通过，实验已加入队尾"); await refresh(); }
-          catch (e) { notify((e as Error).message); }
-          finally { setResuming(false); }
-        }}>{resuming ? "正在校验…" : "校验并加入队列"}</button></footer>
-      </Modal>}
+      {remove && (
+        <Modal title="删除监控记录？" close={() => setRemove("")}>
+          <p>从运行监控中移除此实验。历史记录、本地缓存和云端文件均保留；需要续跑时仍可在历史管理中载入续跑到编辑区。</p>
+          <footer>
+            <button onClick={() => setRemove("")}>取消</button>
+            <button
+              className="danger"
+              onClick={() =>
+                action(async () => {
+                  await api(`/api/runs/${remove}/remove`, { confirmed: true });
+                  setRemove("");
+                  if (selected === remove) setSelected("");
+                  notify("已删除监控记录，历史和实验文件均保留");
+                })
+              }
+            >
+              确认删除记录
+            </button>
+          </footer>
+        </Modal>
+      )}
     </>
   );
 }

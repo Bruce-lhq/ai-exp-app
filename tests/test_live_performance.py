@@ -57,3 +57,29 @@ def test_synced_imports_are_not_downloaded_on_every_background_tick(tmp_path, mo
     monkeypatch.setattr('ai_exp_app.history.worker.sync_history', unexpected)
     sync_once(store, tmp_path / 'cache')
     assert store.get('history', record['id'])['sync_status'] == 'synced'
+
+
+def test_managed_live_run_does_not_wait_for_history_download(tmp_path, monkeypatch):
+    import ai_exp_app.analysis.api as analysis
+    analysis._external_cache.clear()
+    store = Store(tmp_path / 'db')
+    store.put('runs', 'managed', {'id': 'managed', 'display_name': 'Small run',
+                               'status': 'running', 'remote_path': '/runs/managed'})
+    monkeypatch.setattr(analysis, 'remote', lambda *args: {
+        'managed': {'points': [{'x': 1024, 'y': 42}], 'metrics': ['val_ppl'], 'warnings': []}})
+    app = FastAPI(); app.include_router(create_router(store))
+    result = TestClient(app).post('/api/analysis/series', json={
+        'history_ids': ['managed'], 'live_ids': ['managed']}).json()
+    assert result['series'][0]['points'] == [{'x': 1024, 'y': 42}]
+    analysis._external_cache.clear()
+
+
+def test_unstarted_dequeued_run_does_not_create_unsyncable_history(tmp_path, monkeypatch):
+    store = Store(tmp_path / 'db')
+    store.put('runs', 'cancelled', {'id': 'cancelled', 'status': 'stopped',
+                                  'remote_path': '/runs/not-created', 'mode': 'queue'})
+    def unexpected(*args):
+        raise AssertionError('An unstarted queue item has no experiment files')
+    monkeypatch.setattr('ai_exp_app.history.worker.sync_history', unexpected)
+    sync_once(store, tmp_path / 'cache')
+    assert store.get('history', 'cancelled') is None

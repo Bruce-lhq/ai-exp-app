@@ -22,7 +22,8 @@ async function baseRoutes(page: Page, handler: (route: Route, path: string) => P
     const path = new URL(route.request().url()).pathname;
     if (await handler(route, path)) return;
     let body: any = [];
-    if (path === "/api/connection") body = { connected: true };
+    if (path === "/api/settings/local") body = { configured: true, local_settings: { ssh_alias: "gpu", local_import_root: "/tmp/downloads/", remote_import_root: "/srv/runs/" } };
+    else if (path === "/api/connection") body = { connected: true };
     else if (path === "/api/runs") body = [];
     else if (path === "/api/queue") body = { runs: [], paused: false, revision: 0 };
     else if (path === "/api/history") body = [];
@@ -123,7 +124,7 @@ test("parameter workspace small actions survive a complete edit/import/export cy
 test("history, notification, chart and table controls complete without a blank screen", async ({ page }) => {
   const errors: string[] = [], patched: any[] = [], parameterSaves: any[] = [];
   let history = [
-    { id: "a", name: "基线备注", display_name: "raw-a", status: "completed", visibility: "visible", sync_status: "synced", source: { kind: "local", path: "/tmp/a" }, parameters: { training: { lr: 0.01, lambda: 0 }, runtime: { gpu_count: 8 } }, parameter_labels: { lr: "学习率" }, notes: "", tags: [] },
+    { id: "a", name: "基线备注", display_name: "raw-a", status: "completed", visibility: "visible", sync_status: "synced", source: { kind: "local", path: "/tmp/a" }, parameters: { training: { lambda: 0 }, runtime: { gpu_count: 8 } }, parameter_labels: { lr: "学习率" }, notes: "", tags: [] },
     { id: "b", name: "CA 备注", status: "stopped", visibility: "visible", sync_status: "synced", source: { kind: "local", path: "/tmp/b" }, parameters: { training: { lr: 0.02, lambda: 0.5 }, runtime: { gpu_count: 8 } }, parameter_labels: { lr: "学习率" }, notes: "旧备注", tags: ["ca"] },
   ];
   let templates = [{ id: "default", name: "默认模板", columns: [{ id: "name", kind: "name", title: "实验" }, { id: "lr", kind: "parameter", field: "lr", title: "学习率" }] }];
@@ -200,10 +201,22 @@ test("history, notification, chart and table controls complete without a blank s
   await page.getByLabel("Baseline").selectOption("a");
   await page.getByRole("button", { name: "编辑列与模板" }).click();
   await page.getByLabel("选择超参数列").selectOption("lambda");
-  await page.getByRole("button", { name: "增加超参数列" }).click();
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+  await page.getByLabel("列类型").selectOption("metric");
   await page.getByLabel("选择指标列").selectOption("R_min");
-  await page.getByRole("button", { name: "增加指标与差值" }).click();
+  await page.getByRole("button", { name: "添加", exact: true }).click();
   await page.getByRole("button", { name: "备注列" }).click();
+  await expect(page.getByLabel("数字格式 备注", { exact: true })).toHaveCount(0);
+  await page.getByLabel("基线新名 备注", { exact: true }).fill("  table note 2e-4  ");
+  await page.getByLabel("基线新名 备注", { exact: true }).press("Enter");
+  await expect.poll(() => patched.at(-1)).toEqual({ notes: "table note 2e-4" });
+  await expect(page.getByLabel("基线新名 备注", { exact: true })).toHaveValue("table note 2e-4");
+  await expect(page.getByLabel("数字格式 学习率", { exact: true })).toHaveValue("fixed");
+  await expect(page.getByLabel("位数 学习率", { exact: true })).toHaveValue("2");
+  await page.getByLabel("数字格式 学习率", { exact: true }).selectOption("compact");
+
+  await expect.poll(() => (templates[0].columns.find((c) => c.id === "lr") as any)?.format).toEqual({ type: "compact", digits: 2 });
+  await expect(page.getByRole("textbox", { name: "CA 备注 学习率", exact: true })).toHaveCount(0);
   await page.getByLabel("基线新名 学习率").fill("  任意字符串  ");
   await page.getByLabel("基线新名 学习率").press("Enter");
   await expect.poll(() => parameterSaves.at(-1)).toEqual({ field: "lr", value: "任意字符串" });
@@ -257,16 +270,16 @@ test("directory import, remove, permanent delete and damaged browser cache stay 
 
   await page.getByRole("button", { name: "历史管理", exact: true }).click();
   await page.getByRole("button", { name: "从本地导入" }).click();
-  await expect(page.getByLabel("目录路径")).toHaveValue("/Users/your-user/gpu_downloads/");
+  await expect(page.getByLabel("目录路径")).toHaveValue("/tmp/downloads/");
   await page.getByLabel("目录路径").fill("/tmp/source-2");
   await page.getByRole("button", { name: "打开", exact: true }).click();
   await page.getByRole("button", { name: "选择此目录" }).click();
   await expect.poll(() => imports.at(-1)).toEqual({ source: "local", path: "/tmp/source-2", alias: "gpu" });
 
   await page.getByRole("button", { name: "从云端导入" }).click();
-  await expect(page.getByLabel("目录路径")).toHaveValue("/your_exp/runs/");
+  await expect(page.getByLabel("目录路径")).toHaveValue("/srv/runs/");
   await page.getByRole("button", { name: "选择此目录" }).click();
-  await expect.poll(() => imports.at(-1)).toEqual({ source: "remote", path: "/your_exp/runs/", alias: "gpu" });
+  await expect.poll(() => imports.at(-1)).toEqual({ source: "remote", path: "/srv/runs/", alias: "gpu" });
 
   const original = page.locator(".history-card").filter({ hasText: "本地实验" });
   await original.getByRole("button", { name: "从历史移除" }).click();

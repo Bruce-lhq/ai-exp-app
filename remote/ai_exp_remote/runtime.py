@@ -12,8 +12,22 @@ from .launcher import build_launch
 from .runner import alive, stop_attempt
 from .scheduler import gpu_status, schedule_head
 from .state import atomic_json, emit, Store
+from .config import settings
 
 ACTIVE = ('starting', 'running', 'stopping')
+GROUPS_ROOT = None
+
+def register_manifest(run):
+    # Monitoring plumbing only: mirror terminal launchers so dashboard/gpu-log see the
+    # run. Join the newest non-empty manifest so concurrent terminal runs stay visible;
+    # register itself replaces any row overlapping our GPUs (same-successor semantics).
+    try:
+        root = GROUPS_ROOT or Path(settings().get('remote_groups_root') or str(Path(run['project']['runs_root']) / '.gpu_exp_groups'))
+        manifests = sorted((p for p in root.glob('*.tsv') if p.stat().st_size), key=lambda p: p.stat().st_mtime, reverse=True)
+        batch = manifests[0].stem if manifests else 'workbench-' + time.strftime('%Y%m%dT%H%M%S')
+        subprocess.run(['gpu-groups', 'register', batch, ','.join(str(g) for g in run['gpu_ids']), run['remote_path']], capture_output=True, timeout=15)
+    except Exception:
+        pass
 
 def worker_command(*args):
     return [sys.executable, str(Path(sys.argv[0]).resolve()), *args]
@@ -134,6 +148,7 @@ def tick(store):
             except Exception as exc:
                 pause_failure(state, run, 'launch_failed: ' + str(exc))
                 break
+            register_manifest(run)
             available = [x for x in available if x not in run['gpu_ids']]
 
 def daemon(root):

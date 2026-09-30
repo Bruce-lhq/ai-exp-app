@@ -24,3 +24,16 @@ def test_session_origin_and_host_enforced(tmp_path):
         client.get("/")
         assert client.post("/api/projects", json={}, headers={"Origin": "http://evil.test"}).status_code == 403
         assert client.get("/api/health", headers={"Host": "evil.test"}).status_code == 403
+
+
+def test_homepage_refreshes_session_after_service_restart(tmp_path):
+    with TestClient(create_app(tmp_path)) as first:
+        home = first.get('/')
+        assert home.headers.get('cache-control') == 'no-store'
+        old_cookie = first.cookies.get('ai_exp_session')
+    with TestClient(create_app(tmp_path)) as second:
+        second.cookies.set('ai_exp_session', old_cookie, domain='testserver.local', path='/')
+        assert second.get('/api/projects').status_code == 403
+        home = second.get('/')
+        assert second.cookies.get('ai_exp_session') != old_cookie
+        assert second.get('/api/projects').status_code == 200

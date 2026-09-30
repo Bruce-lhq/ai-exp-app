@@ -2,17 +2,20 @@ import math
 import re
 from decimal import Decimal, DecimalException
 
-MANAGED_KEYS = {"run_dir", "data_root", "resume", "allow_nonexact_resume", "allow_world_size_change"}
+MANAGED_KEYS = {
+    "run_dir", "data_root", "resume", "allow_nonexact_resume", "allow_world_size_change",
+    "config_index", "config_total", "config_name", "config_description",
+}
 
 
 def parse_number(text: str, integer: bool = False) -> int | float:
     if len(text) > 128:
         raise ValueError("数值过长")
-    match = re.fullmatch(r"\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([kKmMbB]?)\s*", text)
+    match = re.fullmatch(r"\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([kKmMbBtT]?)\s*", text)
     if not match:
         raise ValueError("请输入数值，可使用 K、M、B")
     try:
-        value = Decimal(match[1]) * {"": 1, "k": 1000, "m": 1000000, "b": 1000000000}[match[2].lower()]
+        value = Decimal(match[1]) * {"": 1, "k": 1000, "m": 1000000, "b": 1000000000, "t": 1000000000000}[match[2].lower()]
         if not value.is_finite() or abs(value) > Decimal("1e308"):
             raise ValueError("数值超出范围")
         if integer:
@@ -68,7 +71,7 @@ def validate_parameters(schema: list[dict], parameters: dict) -> dict:
     fields = {field["key"]: field for field in schema if field["key"] not in MANAGED_KEYS}
     warnings, errors, fixed = [], [], {}
     for key in training.keys() - fields.keys():
-        if key not in {"version", "runtime", "name"}:
+        if key not in MANAGED_KEYS | {"version", "runtime", "name"}:
             warnings.append({"field": key, "message": "当前代码没有此参数，已忽略"})
     for key, field in fields.items():
         if key not in training:

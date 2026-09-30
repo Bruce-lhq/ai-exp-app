@@ -22,6 +22,10 @@ export function HistoryPage({
     [archived, setArchived] = useState(false),
     [deletion, setDeletion] = useState<any>(null),
     [selected, setSelected] = useState<string[]>([]);
+  const [settings, setSettings] = useState({ remote_import_root: "/", local_import_root: "~/gpu_downloads/" });
+  useEffect(() => {
+    api("/api/settings/local").then((value: any) => { if (value.local_settings) setSettings(value.local_settings); }).catch((e) => notify(e.message));
+  }, [source]);
   async function refresh() {
     const next = items(await api("/api/history"));
     setHistory(next);
@@ -214,6 +218,10 @@ export function HistoryPage({
                   >
                     载入参数到编辑区
                   </button>
+                  {h.source?.kind === 'remote' && !h.remote_deleted && <button onClick={() => action(async () => {
+                    const value = await api(`/api/history/${h.id}/resume-editor`, {});
+                    onLoad(value);
+                  })}>载入续跑到编辑区</button>}
                   <a className="button" href={`/api/history/${h.id}/export`}>
                     <Download size={14} />
                     导出实验
@@ -280,7 +288,7 @@ export function HistoryPage({
       {source && (
         <DirectoryPicker
           source={source}
-          initial={source === "remote" ? "/your_exp/runs/" : "/Users/your-user/gpu_downloads/"}
+          initial={source === "remote" ? settings.remote_import_root : settings.local_import_root}
           onSelect={(path) =>
             action(async () => {
               await api("/api/history/import", { source, path, alias: "gpu" });
