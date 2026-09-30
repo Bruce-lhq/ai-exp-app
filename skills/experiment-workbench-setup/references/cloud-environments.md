@@ -15,6 +15,8 @@ Do not assume a provider, GPU vendor, root user, port 22, persistent disk or dir
 
 Confirm persistent runs/cache/checkpoints before selecting paths. Provider scratch disks may disappear when stopping a rented instance. Do not create paid resources, change network rules or replace drivers without explicit authorization for that action. Routine read-only probes and workbench configuration do not require repeated permission.
 
+The current process-identity supervisor uses Linux /proc. Inspect the probe platform before deployment; for a different host OS use the provider-supported Linux GPU execution environment/allocation or container with a real SSH endpoint and device access. Do not assume a browser shell or host kernel is equivalent. Changing images/resources needs the user’s authorization and must preserve existing storage/work.
+
 ## GPU discovery and allocation
 
 Default inventory uses nvidia-smi. The `probe.py ssh` helper reports that result as an observation, not a compatibility verdict. If unavailable, inspect the actual vendor tools, device permissions, container mounts and allocation environment. Check whether the program currently sees its devices. Do not install NVIDIA tooling on another vendor's GPU.

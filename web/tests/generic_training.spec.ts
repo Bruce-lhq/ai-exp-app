@@ -12,8 +12,8 @@ test('step-only metrics choose an available curve without requiring perplexity o
     if (path === '/api/queue') body = {runs:[]};
     if (path === '/api/analysis/series') {
       const request = route.request().postDataJSON(); requests.push(request);
-      body = {metrics:['accuracy'],axes:['step'], warnings:[], series:
-        request.metric === 'accuracy' && request.x_axis === 'step'
+      body = {metrics:['ca/accuracy', 'ca/loss'],axes:['step'], warnings:[], series:
+        request.metric === 'ca/accuracy' && request.x_axis === 'step'
           ? [{id:'h',name:'Classifier',points:[{x:1,y:.5},{x:2,y:.9}]}] : []};
     }
     await route.fulfill({json:body});
@@ -21,8 +21,9 @@ test('step-only metrics choose an available curve without requiring perplexity o
   await page.goto('/');
   await page.getByRole('button', {name:'画图与列表',exact:true}).click();
   await expect(page.getByLabel('横轴', {exact:true})).toHaveValue('step');
-  await expect.poll(() => requests.some(request => request.metric === 'accuracy' && request.x_axis === 'step')).toBe(true);
+  await expect.poll(() => requests.some(request => request.metric === 'ca/accuracy' && request.x_axis === 'step')).toBe(true);
   await expect(page.getByRole('button', {name:'下载 PNG',exact:true})).toBeEnabled();
+  await expect(page.getByLabel('指标', {exact:true}).getByRole('option', {name:'ca/loss',exact:true})).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

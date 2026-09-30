@@ -113,7 +113,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           }
           const snapshot = {key: plotKey(ids, settings), series: x.series || [],
             warnings: (x.warnings || []).map((w: any) => w.message || w),
-            metrics: [...new Set<string>([settings.metric, ...(x.metrics || []).filter((m: string) => !m.startsWith("ca/"))])]};
+            metrics: [...new Set<string>([settings.metric, ...(x.metrics || []).filter((m: string) => !/^ca\/L\d+\/T\d+\//.test(m))])]};
           lastPlot = snapshot;
           setSeries(snapshot.series);
           setWarnings(snapshot.warnings);

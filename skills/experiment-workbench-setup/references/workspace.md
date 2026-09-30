@@ -27,7 +27,7 @@ Write only the missing/revised fields, preserving their existing workspace. Exam
 }
 ```
 
-`remote_data_root` is optional; fill it only if applicable. A program's data path belongs in its actual parameter/profile. Choose a dedicated runs directory, never `/`. `remote_python` is the training executable; the installer separately requires `python3` for its standard-library agent. Existing GPU setups may already have distinct environments; retain them.
+`remote_data_root` is optional; fill it only if applicable. A program's data path belongs in its actual parameter/profile. Choose a dedicated runs directory, never `/`. `remote_python` is the Python interpreter for Python launchers, validators and inventory hooks; for R/Julia/compiled trainers put their actual executable in the profile command instead. the installer separately requires `python3` for its standard-library agent. Existing GPU setups may already have distinct environments; retain them.
 
 `remote_gpu_probe` optionally points to a user-owned absolute Python script for truthful nondefault device/allocation inventory. Its exact JSON contract and visibility mapping are in [cloud-environments.md](cloud-environments.md). Leaving it empty uses the default NVIDIA query; missing NVIDIA tooling is a prompt to inspect the actual environment, not a reason to install unrelated drivers.
 

@@ -110,7 +110,7 @@ export default function App() {
             实验与结果，一处管理
           </p>
           <div className="version">
-            个人工作台 <span>v0.1</span>
+            个人工作台 <span>v0.3.0</span>
           </div>
         </div>
       </aside>
