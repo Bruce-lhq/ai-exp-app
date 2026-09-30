@@ -65,7 +65,7 @@ def probe_ssh(alias, project=None, python='python3'):
         'import json, os, shutil, subprocess, sys',
         'from pathlib import Path',
         'project = ' + repr(project),
-        'result = {"python":sys.executable,"python_version":list(sys.version_info[:3]),"home":str(Path.home()),"read_only":True}',
+        'result = {"python":sys.executable,"python_version":list(sys.version_info[:3]),"platform":sys.platform,"home":str(Path.home()),"read_only":True}',
         'if project:',
         ' p = Path(project); result["project"]={"path":str(p),"exists":p.is_dir(),"readable":os.access(str(p),os.R_OK),"profile":(p/"workbench.project.json").is_file()}',
         'tools={name:shutil.which(name) for name in ("nvidia-smi","amd-smi","rocm-smi")}; result["gpu_tools"]=tools',

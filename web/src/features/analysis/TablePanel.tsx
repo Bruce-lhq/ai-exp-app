@@ -350,7 +350,7 @@ export function TablePanel({
               </select>
             </label> : <label>选择指标：
               <select aria-label="选择指标列" value={metricChoice} onChange={(e) => setMetricChoice(e.target.value)}>
-                {[...new Set([...metrics, "tokens_per_second"])].filter((m) => !m.startsWith("ca/")).map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (tok/s)" : metric}</option>)}
+                {[...new Set([...metrics, "tokens_per_second"])].filter((m) => !/^ca\/L\d+\/T\d+\//.test(m)).map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (tok/s)" : metric}</option>)}
               </select>
             </label>}
             <button disabled={columnKind === "parameter" && !parameterChoice} onClick={() => columnKind === "parameter" ? addParameter(parameterChoice) : add("metric")}><Plus size={14} />添加</button>
