@@ -2,7 +2,7 @@ import math
 import re
 from decimal import Decimal, DecimalException
 
-MANAGED_KEYS = {
+HISTORICAL_METADATA = {
     "run_dir", "data_root", "resume", "allow_nonexact_resume", "allow_world_size_change",
     "config_index", "config_total", "config_name", "config_description",
 }
@@ -61,17 +61,18 @@ def coerce(field: dict, value):
     return value
 
 
-def validate_parameters(schema: list[dict], parameters: dict) -> dict:
+def validate_parameters(schema: list[dict], parameters: dict, controlled_keys=(), workers_parameter=None) -> dict:
     if not isinstance(parameters, dict):
         return {"parameters": {"training": {}, "runtime": {"gpu_count": 1}}, "warnings": [], "errors": [{"field": "parameters", "message": "参数必须为 JSON 对象"}]}
     training = parameters.get("training", parameters)
     runtime = parameters.get("runtime", {"gpu_count": 1})
     if not isinstance(training, dict) or not isinstance(runtime, dict):
         return {"parameters": parameters, "warnings": [], "errors": [{"field": "parameters", "message": "training 和 runtime 必须为对象"}]}
-    fields = {field["key"]: field for field in schema if field["key"] not in MANAGED_KEYS}
+    controlled_keys = set(controlled_keys)
+    fields = {field["key"]: field for field in schema if field["key"] not in controlled_keys}
     warnings, errors, fixed = [], [], {}
     for key in training.keys() - fields.keys():
-        if key not in MANAGED_KEYS | {"version", "runtime", "name"}:
+        if key not in controlled_keys | HISTORICAL_METADATA | {"version", "runtime", "name"}:
             warnings.append({"field": key, "message": "当前代码没有此参数，已忽略"})
     for key, field in fields.items():
         if key not in training:
@@ -86,9 +87,10 @@ def validate_parameters(schema: list[dict], parameters: dict) -> dict:
         except (ValueError, TypeError, OverflowError) as exc:
             errors.append({"field": key, "message": str(exc)})
     try:
-        if isinstance(runtime.get("gpu_count", 1), bool):
+        requested_gpus = fixed.get(workers_parameter, runtime.get("gpu_count", 1)) if workers_parameter else runtime.get("gpu_count", 1)
+        if isinstance(requested_gpus, bool):
             raise ValueError("GPU 卡数必须为正整数")
-        gpu_count = parse_number(str(runtime.get("gpu_count", 1)), integer=True)
+        gpu_count = parse_number(str(requested_gpus), integer=True)
         if gpu_count < 1:
             raise ValueError("GPU 卡数必须为正整数")
     except (ValueError, TypeError):

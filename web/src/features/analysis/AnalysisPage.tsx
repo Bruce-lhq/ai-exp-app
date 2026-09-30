@@ -68,7 +68,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     [settings, setSettings] = useState<ChartSettings>(initialSettings),
     [series, setSeries] = useState<Series[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.series : []),
     [warnings, setWarnings] = useState<string[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.warnings : []),
-    [metrics, setMetrics] = useState(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.metrics : ["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms"]),
+    [metrics, setMetrics] = useState(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.metrics : ["val_ppl"]),
     [advanced, setAdvanced] = useState(false),
     [appearance, setAppearance] = useState(initialAppearance),
     [appearanceDrag, setAppearanceDrag] = useState("");
@@ -99,9 +99,21 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     })
       .then((x) => {
         if (alive) {
+          const available: string[] = x.metrics || [];
+          const axes: string[] = x.axes || [];
+          const metric = available.length && !available.includes(settings.metric) ? available[0] : settings.metric;
+          const axis = axes.length && !axes.includes(settings.xAxis) ? (axes.includes("step") ? "step" : axes[0]) : settings.xAxis;
+          if (metric !== settings.metric || axis !== settings.xAxis) {
+            setSettings((current) => ({ ...current, metric, xAxis: axis,
+              ...(metric !== current.metric ? { yLabel: metric, yScale: metric.toLowerCase().includes("ppl") ? "logarithmic" : "linear",
+                title: current.title === initial.title ? metric : current.title } : {}),
+              ...(axis !== current.xAxis ? { xLabel: axis === "tokens" ? "Trained tokens (B)" : axis === "step" ? "训练 step" : "有效训练耗时 (s)",
+                xMin: undefined, xMax: undefined } : {}),
+            }));
+          }
           const snapshot = {key: plotKey(ids, settings), series: x.series || [],
             warnings: (x.warnings || []).map((w: any) => w.message || w),
-            metrics: [...new Set<string>(["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms", ...(x.metrics || []).filter((m: string) => !m.startsWith("ca/"))])]};
+            metrics: [...new Set<string>([settings.metric, ...(x.metrics || []).filter((m: string) => !m.startsWith("ca/"))])]};
           lastPlot = snapshot;
           setSeries(snapshot.series);
           setWarnings(snapshot.warnings);

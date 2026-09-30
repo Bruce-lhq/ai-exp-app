@@ -39,6 +39,7 @@ export function ParameterPage({
   const [projects, setProjects] = useState<any[]>([]),
     [project, setProject] = useState(""),
     [schema, setSchema] = useState<Field[]>([]),
+    [workersParameter, setWorkersParameter] = useState<string | undefined>(),
     [presets, setPresets] = useState<any[]>([]),
     [preset, setPreset] = useState(""),
     [params, setParams] = useState<Parameters>({
@@ -68,7 +69,7 @@ export function ParameterPage({
       setProject(historical.project_id);
       return;
     }
-    if (!historical || busy || !schema.length || loadedProject !== project) return;
+    if (!historical || !project || busy || loadedProject !== project) return;
     let alive = true;
     const training = historical.training || historical;
     const parameters = { training, runtime: historical.runtime || params.runtime };
@@ -83,7 +84,7 @@ export function ParameterPage({
       // A flat args.json may contain an old checkpoint path, not a validated resume ticket.
       setResume(historical.training && historical.resume && typeof historical.resume === "object"
         && typeof historical.resume.ticket === "string" && typeof historical.resume.path === "string"
-        && Number.isFinite(historical.resume.tokens_seen) ? historical.resume : undefined);
+        ? historical.resume : undefined);
       if (historical.display_name) setRunName(historical.display_name);
       setDraft({});
       setErrors(Object.fromEntries((result.errors || []).map((error: any) => [error.field, error.message])));
@@ -118,7 +119,7 @@ export function ParameterPage({
         api(`${base}/parameter-display`),
       ]);
       if (!alive || generation.current !== requestGeneration) return;
-      setSchema(s.fields || []); setPresets(items(p));
+      setSchema(s.fields || []); setWorkersParameter(s.integration?.runtime?.workers_parameter); setPresets(items(p));
       const initial = {training:i.training || {}, runtime:i.runtime || {gpu_count:1}};
       setParams(initial); setClean(JSON.stringify(initial));
       setDisplay(d || {}); setDraft({}); setErrors({}); setPreset("");
@@ -214,7 +215,7 @@ export function ParameterPage({
         <div>
           <span className="eyebrow">CONFIGURE</span>
           <h1>配置实验</h1>
-          <p>从一份参数开始，运行一次清晰可追溯的实验。</p>
+          <p>项目通过 workbench.project.json 定义启动命令、参数与指标文件。</p>
         </div>
         <button onClick={() => setBrowse(true)}>
           <Plus size={16} />
@@ -247,7 +248,7 @@ export function ParameterPage({
                     ref: e.target.value || null,
                   },
                 });
-                setSchema(s.fields);
+                setSchema(s.fields); setWorkersParameter(s.integration?.runtime?.workers_parameter);
                 const v = await api(`${base}/parameters/validate`, { parameters: params });
                 setWarning((v.warnings || []).map((w: any) => w.message || w).join("；"));
                 setErrors(Object.fromEntries((v.errors || []).map((error: any) => [error.field, error.message])));
@@ -267,7 +268,7 @@ export function ParameterPage({
         {project && <button disabled={busy} onClick={()=>action(async()=>{
           const ref=prompt("输入分支、标签或 commit SHA",code); if(ref===null)return;
           const result=await api(`${base}/schema`,{code:{kind:ref?'ref':'working_tree',ref:ref||null}});
-          setCode(ref); setSchema(result.fields); if(ref&&!refs.includes(ref))setRefs([...refs,ref]);
+          setCode(ref); setSchema(result.fields); setWorkersParameter(result.integration?.runtime?.workers_parameter); if(ref&&!refs.includes(ref))setRefs([...refs,ref]);
           const v=await api(`${base}/parameters/validate`,{parameters:params});
           setWarning((v.warnings||[]).map((w:any)=>w.message||w).join('；'));
           setErrors(Object.fromEntries((v.errors||[]).map((e:any)=>[e.field,e.message])));
@@ -464,12 +465,12 @@ export function ParameterPage({
               {warning && <p className="warning">{warning}</p>}
               {resume && <div className="toolbar">
                 <label style={{ flex: 1 }}>resume（严格续跑）<input aria-label="resume" readOnly value={resume.path} style={{ width: '100%' }} /></label>
-                <span>从 {(resume.tokens_seen / 1e9).toFixed(3)}B 恢复</span>
+                <span>{typeof resume.tokens_seen === "number" ? `从 ${(resume.tokens_seen / 1e9).toFixed(3)}B 恢复` : typeof resume.step === "number" ? `从 step ${displayNumber(resume.step)} 恢复` : "从已验证的 checkpoint 恢复"}</span>
                 <button onClick={() => setResume(undefined)}>取消续跑</button>
                 <p className="muted">请核对代码项目。启动时校验原始训练参数与 GPU 数；结果写入新实验目录。</p>
               </div>}
               <div className="parameter-list">
-                <label className="parameter">
+                {!workersParameter && <label className="parameter">
                   <span>gpu_count · 使用 GPU 数</span>
                   <input
                     aria-label="GPU 卡数"
@@ -487,7 +488,7 @@ export function ParameterPage({
                         }));
                     }}
                   />
-                </label>
+                </label>}
                 {sorted.map((f) => (
                   <div
                     className={`parameter ${errors[f.key] ? "invalid" : ""}`}
@@ -605,6 +606,7 @@ export function ParameterPage({
                                 setParams((p) => ({
                                   ...p,
                                   training: { ...p.training, [f.key]: value },
+                                  runtime: f.key === workersParameter && typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? { gpu_count: value } : p.runtime,
                                 }));
                                 setErrors((p) => ({ ...p, [f.key]: "" }));
                               } catch (error) {
@@ -722,12 +724,11 @@ export function ParameterPage({
             action(async () => {
               const name = prompt(
                 "项目名称",
-                path.split("/").pop() || "launcher",
+                path.split("/").filter(Boolean).pop() || "训练项目",
               );
               if (!name) return;
               const p = await api("/api/projects", {
                 name,
-                ssh_alias: "gpu",
                 remote_path: path,
               });
               setProjects(items(await api("/api/projects")));

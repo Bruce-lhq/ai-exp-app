@@ -112,3 +112,10 @@ def test_setup_root_changes_keep_derived_agent_and_import_browser_consistent(tmp
     changed = config.save_local_settings({'remote_root': '/new/workbench', 'remote_runs_root': '/new/runs'})
     assert changed['remote_agent'] == '/other/custom-agent.pyz'
     assert changed['remote_import_root'] == '/other/imports/'
+
+
+def test_dataset_directory_is_optional_for_generic_training(tmp_path):
+    config = Config.load(tmp_path)
+    config.save_local_settings({"remote_runs_root": "/srv/runs"})
+    assert config.configured
+    assert config.local_settings["remote_data_root"] == ""

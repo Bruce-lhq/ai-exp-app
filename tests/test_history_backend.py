@@ -242,14 +242,13 @@ def test_parsed_cache_reused_and_invalidated_by_local_refresh(setup, monkeypatch
     assert len(reads) == 2
 
 
-def test_imported_baseline_retains_disabled_ca_in_editor_parameters(tmp_path):
+def test_imported_parameters_do_not_infer_project_specific_defaults(tmp_path):
     from ai_exp_app.history.importer import enrich
-    (tmp_path/'args.json').write_text(json.dumps({'backbone': 's1llt', 'channels': 16}))
-    (tmp_path/'model_config.json').write_text(json.dumps({'backbone': 's1llt', 'channels': 16}))
+    (tmp_path/'args.json').write_text(json.dumps({'width': 16}))
+    (tmp_path/'model_config.json').write_text(json.dumps({'width': 16, 'custom_switch': 0}))
     record = enrich({'cache_dir': str(tmp_path)})
-    assert record['parameters']['ca_lambda'] == 0
-    (tmp_path/'args.json').write_text(json.dumps({'backbone': 's1llt', 'ca_lambda': 'edited'}))
-    assert enrich({'cache_dir': str(tmp_path)})['parameters']['ca_lambda'] == 'edited'
+    assert record['parameters'] == {'width': 16}
+    assert record['parameter_original_fields'] == ['width']
 
 
 def test_notes_are_trimmed_and_persisted(setup):

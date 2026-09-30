@@ -37,6 +37,8 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [drag, setDrag] = useState(0),
     [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
     [metric, setMetric] = useState("val_ppl"),
+    [axis, setAxis] = useState("tokens"),
+    [metrics, setMetrics] = useState<string[]>(["val_ppl"]),
     [title, setTitle] = useState(() => localStorage.getItem("monitor.title") || ""),
     [appearance, setAppearance] = useState<Record<string, { name?: string; color?: string; order?: number }>>(() => {
       try { return JSON.parse(localStorage.getItem("monitor.appearance") || "{}"); } catch { return {}; }
@@ -83,9 +85,14 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       if (alive) setCurveLoading(true);
       try {
         const x = await api("/api/analysis/series", {
-          history_ids: [...new Set([...liveIds, ...comparisons])], live_ids: liveIds, metric, x_axis: "tokens",
+          history_ids: [...new Set([...liveIds, ...comparisons])], live_ids: liveIds, metric, x_axis: axis,
         }, undefined, { background: true, signal: controller.signal });
         if (alive) {
+          const available: string[] = x.metrics || [];
+          const axes: string[] = x.axes || [];
+          setMetrics([...new Set([metric, ...available])]);
+          if (available.length && !available.includes(metric)) setMetric(available[0]);
+          if (axes.length && !axes.includes(axis)) setAxis(axes.includes("step") ? "step" : axes[0]);
           setSeries(x.series || []);
           setCurveWarning((x.warnings || []).join("；"));
           lastPlot = { key: JSON.stringify([metric, comparisons]), series: x.series || [] };
@@ -102,7 +109,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [metric, JSON.stringify(comparisons), liveIdsKey]);
+  }, [metric, axis, JSON.stringify(comparisons), liveIdsKey]);
   useEffect(() => {
     if (!selected) return;
     let alive = true;
@@ -131,9 +138,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   }
   const settings = useMemo<ChartSettings>(() => ({
     metric,
-    xAxis: "tokens",
+    xAxis: axis,
     title,
-    xLabel: "Trained tokens (B)",
+    xLabel: axis === "tokens" ? "Trained tokens (B)" : axis === "step" ? "训练 step" : "有效训练耗时 (s)",
     yLabel: metric,
     xScale: "linear",
     yScale: metric.toLowerCase().includes('ppl') ? "logarithmic" : "linear",
@@ -141,8 +148,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     height: 1044,
     pixelRatio: 1.5,
     xMin: 0,
-    xMax: 10.75,
-  }), [metric, title]);
+  }), [metric, axis, title]);
   const orderedSeries = useMemo(() => [...series].sort((a, b) =>
     (appearance[a.id]?.order ?? series.indexOf(a)) - (appearance[b.id]?.order ?? series.indexOf(b)),
   ), [series, appearance]);
@@ -167,7 +173,8 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
           <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
           <label>图标题 <input value={title} onChange={(e) => setTitle(e.target.value.trim())} /></label>
           <details><summary>历史对照（{comparisons.length}）</summary><button className="subtle" onClick={() => setComparisons(comparisons.length === history.length ? [] : history.map((h) => h.id))}>{comparisons.length === history.length ? "取消全选" : "全选"}</button>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
-          <datalist id="monitor-metrics"><option>val_ppl</option><option>train_ppl</option><option>R_min</option><option>R_mean</option><option>update_rms</option><option>train_loss</option></datalist>
+          <datalist id="monitor-metrics">{metrics.map((name) => <option key={name}>{name}</option>)}</datalist>
+          <label>横轴 <select aria-label="运行监控横轴" value={axis} onChange={(event) => setAxis(event.target.value)}><option value="tokens">训练 tokens</option><option value="step">step</option><option value="elapsed_s">实际训练耗时</option></select></label>
         </div>
         {curveWarning && <p className="warning">{curveWarning}</p>}
         {series.length ? <ExperimentChart series={orderedSeries} settings={settings} appearance={appearance} /> : <Empty>{curveLoading ? <span role="status"><span className="spinner" /> 正在读取运行曲线…</span> : `当前没有可绘制的 ${metric} 数据`}</Empty>}

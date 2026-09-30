@@ -79,7 +79,7 @@ def metric_series(payload):
         raise AgentError('AXIS', '无效横轴')
     result = {}
     for run in payload.get('runs', []):
-        points, available, warnings = [], set(), []
+        points, available, axes, warnings = [], set(), set(), []
         try:
             path = directory(run['path']) / 'metrics.jsonl'
             if path.is_symlink():
@@ -93,6 +93,10 @@ def metric_series(payload):
                     values = dict(item)
                     if isinstance(item.get('metrics'), dict): values.update(item['metrics'])
                     if event in {'train', 'training'}: values.update(ca_window_metrics(values))
+                    axis_keys = {'tokens': ('tokens_seen', 'total_tokens', 'global_tokens', 'tokens'),
+                                 'step': ('step', 'global_step', 'optimizer_step'),
+                                 'elapsed_s': ('elapsed_s', 'elapsed_seconds')}
+                    axes.update(name for name,keys in axis_keys.items() if any(isinstance(item.get(key),(int,float)) and not isinstance(item.get(key),bool) and math.isfinite(item[key]) for key in keys))
                     x_keys = {'tokens': ('tokens_seen', 'total_tokens', 'global_tokens', 'tokens'),
                               'step': ('step', 'global_step', 'optimizer_step'),
                               'elapsed_s': ('elapsed_s', 'elapsed_seconds')}[axis]
@@ -108,7 +112,7 @@ def metric_series(payload):
                             points.append({'x': x, 'y': value})
         except (OSError, AgentError) as exc:
             warnings.append(str(exc))
-        result[run['id']] = {'points': points, 'metrics': sorted(available), 'warnings': warnings}
+        result[run['id']] = {'points': points, 'metrics': sorted(available), 'axes': sorted(axes), 'warnings': warnings}
     return result
 
 def list_directory(payload):

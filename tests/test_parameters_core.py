@@ -35,7 +35,7 @@ def test_historical_args_ignore_managed_metadata_but_warn_for_unknown_training_f
         "allow_world_size_change": False, "config_index": 1, "config_total": 1,
         "config_name": "historical-config", "config_description": None,
     }
-    result = validate_parameters(schema, arguments)
+    result = validate_parameters(schema, arguments, controlled_keys={"resume", "config_index"})
     assert result["parameters"]["training"] == {"learning_rate": .00005, "seed": 42}
     assert result["errors"] == []
     assert result["warnings"] == [
@@ -65,3 +65,21 @@ def test_default_project_and_cached_schema_survive_router_reload(tmp_path, monke
     assert [p['id'] for p in projects if p['is_default']] == ['s1llt']
     for identity in ('s1llt', 'wonn', 's1llt'):
         assert client.post(f'/api/projects/{identity}/schema', json={'refresh': False}).status_code == 200
+
+
+def test_declared_fields_are_not_reserved_by_name():
+    schema = [{"key": key, "kind": "string", "has_default": True, "default": "default"}
+              for key in ("data_root", "run_dir", "resume", "config_name")]
+    result = validate_parameters(schema, {"training": {"resume": "adapter-v2"}})
+    assert result["errors"] == []
+    assert result["parameters"]["training"]["resume"] == "adapter-v2"
+    assert set(result["parameters"]["training"]) == {field["key"] for field in schema}
+
+
+def test_workers_are_gpu_count_only_when_profile_declares_mapping():
+    schema = [{"key": "num_workers", "kind": "integer", "has_default": True, "default": 16}]
+    parameters = {"training": {}, "runtime": {"gpu_count": 2}}
+    ordinary = validate_parameters(schema, parameters)
+    mapped = validate_parameters(schema, parameters, workers_parameter="num_workers")
+    assert ordinary["parameters"]["runtime"]["gpu_count"] == 2
+    assert mapped["parameters"]["runtime"]["gpu_count"] == 16

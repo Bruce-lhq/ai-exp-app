@@ -79,7 +79,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"app": "ai-exp-app", "version": "0.2.0", "instance_id": app.state.instance_id}
+        return {"app": "ai-exp-app", "version": "0.3.0", "instance_id": app.state.instance_id}
 
     @app.post("/api/local/browse")
     def local_browse(body: dict):

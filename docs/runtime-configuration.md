@@ -1,6 +1,6 @@
 # 运行时配置
 
-源码和安装包共用同一套中性默认值，不包含特定用户的远端或本地绝对路径。第一次打开应用，在“工作空间设置”填写 SSH 别名、远端 Python、实验根目录和数据目录。未配置时仍可离线查看已有历史、图和列表；启动训练需要有效的远端环境。
+源码和安装包共用同一套中性默认值，不包含特定用户的远端或本地绝对路径。第一次打开应用，在“工作空间设置”填写 SSH 别名、远端 Python、实验根目录；数据目录可按项目需要填写。未配置时仍可离线查看已有历史、图和列表；启动训练需要有效的远端环境。
 
 ## 配置文件位置
 
@@ -22,8 +22,9 @@
   "remote_root": "<REMOTE_APP_ROOT>",
   "remote_state_dir": "<REMOTE_APP_ROOT>/state",
   "remote_python": "<REMOTE_PYTHON>",
+  "remote_gpu_probe": "",
   "remote_runs_root": "<REMOTE_RUNS_ROOT>",
-  "remote_data_root": "<REMOTE_DATA_ROOT>",
+  "remote_data_root": "",
   "remote_projects_root": "<REMOTE_PROJECTS_ROOT>",
   "remote_groups_root": "<REMOTE_RUNS_ROOT>/.gpu_exp_groups",
   "remote_import_root": "<REMOTE_RUNS_ROOT>/",
@@ -31,7 +32,7 @@
 }
 ```
 
-中性默认值是 `ssh_alias=gpu`、远端 Python `python3`、远端安装根目录 `.local/share/ai-exp-app`、远端浏览 `/`、本地历史浏览 `~/gpu_downloads/`。实验根目录和数据目录初始为空，不能凭猜测启动训练。`remote_state_dir` 和 `remote_groups_root` 留空时分别由安装根目录和实验根目录派生。
+中性默认值是 `ssh_alias=gpu`、远端 Python `python3`、远端安装根目录 `.local/share/ai-exp-app`、远端浏览 `/`、本地历史浏览 `~/gpu_downloads/`。实验根目录初始为空，必须填写。数据目录可留空，由项目参数或命令自行管理。`remote_state_dir` 和 `remote_groups_root` 留空时分别由安装根目录和实验根目录派生。
 
 本地缓存与数据目录保持既有独立布局：安装版缓存位于应用数据目录的 `gpu_downloads`，本地历史浏览起点用于导入其他目录，不改变已导入缓存位置。
 
@@ -54,3 +55,5 @@
 运行中的实验持有提交时的代码、Python、数据和产物目录；修改应用设置用于后续操作，不会修改正在执行的训练配置。项目自己的配置可覆盖全局 Python、数据与实验根目录。
 
 设计和内部验收记录不包含在公开仓库中。公开说明使用占位符；用户设置只保存在自己的 config.local.json。
+
+`remote_gpu_probe` 可留空以使用 NVIDIA 默认查询。其他设备／提供商可填写远端 Python 设备查询脚本的绝对路径，返回唯一整数 index 与布尔 available 的 JSON 数组。接入 Agent 应核实真实设备命名空间、占用和可分配资源；失败不会自动视为全部空闲。详见 [云端环境接入](../skills/experiment-workbench-setup/references/cloud-environments.md)。

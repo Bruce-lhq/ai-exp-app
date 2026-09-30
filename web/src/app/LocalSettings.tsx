@@ -20,7 +20,7 @@ const advancedFields = [
   ["remote_groups_root", "云端实验组目录"],
   ["remote_import_root", "云端导入起始目录"],
 ] as const;
-const requiredFields = new Set(["ssh_alias", "remote_agent", "remote_python", "remote_runs_root", "remote_data_root"]);
+const requiredFields = new Set(["ssh_alias", "remote_agent", "remote_python", "remote_runs_root"]);
 
 export function LocalSettingsDialog({ initial, firstRun, close, notify }: {
   initial: LocalSettings;
@@ -37,7 +37,7 @@ export function LocalSettingsDialog({ initial, firstRun, close, notify }: {
   );
   return <Modal title={firstRun ? "设置工作空间" : "工作空间设置"} close={close}>
     <p>填写这台电脑使用的 SSH 主机和目录。设置仅保存在本机；稍后设置也可以查看本地历史、画图和列表。</p>
-    <p>* 为运行云端实验所需；云端实验目录和数据目录请填写绝对路径。</p>
+    <p>* 为运行云端实验所需；云端实验目录请填写绝对路径；数据目录仅在训练项目需要时填写。</p>
     <form onSubmit={async (event) => {
       event.preventDefault();
       setSaving(true);

@@ -22,15 +22,6 @@ def enrich(record):
         parameters = json.loads((root / 'args.json').read_text())
     except (OSError, ValueError):
         parameters = {}
-    # launcher training omits inactive CA fields from args/model_config.
-    # Restore the disabled switch before editor validation fills current defaults.
-    if isinstance(parameters, dict) and parameters.get('backbone') in {'wonn', 'llt', 's1llt'} and 'ca_lambda' not in parameters:
-        try:
-            model = json.loads((root / 'model_config.json').read_text())
-        except (OSError, ValueError):
-            model = None
-        if isinstance(model, dict):
-            parameters['ca_lambda'] = model.get('ca_lambda', 0.0)
     def safe(value):
         if isinstance(value, float) and not math.isfinite(value): return None
         if isinstance(value, dict): return {k: safe(v) for k, v in value.items()}

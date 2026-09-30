@@ -94,6 +94,7 @@ def create_router(store):
                 result[identity] = {'name': run.get('display_name') or identity,
                     'records': [{'metric': metric, axis: p['x'], 'value': p['y']} for p in value.get('points', [])],
                     'metadata': {m: {'name': m} for m in value.get('metrics', [])},
+                    'axes': value.get('axes', []),
                     'warnings': [*value.get('warnings', []), *(['更新失败，保留上次曲线：' + error] if error else [])]}
         return result
 
@@ -107,7 +108,7 @@ def create_router(store):
         metric, axis = body.get('metric', 'val_ppl'), body.get('x_axis', body.get('axis', 'tokens'))
         if axis not in {'tokens', 'step', 'elapsed_s'}:
             raise HTTPException(422, '无效横轴')
-        result, warnings, available_metrics = [], [], set()
+        result, warnings, available_metrics, available_axes = [], [], set(), set()
         live_records = load_live([identity for identity in body.get('live_ids', []) if identity in body.get('history_ids', [])], metric, axis)
         for identity in body.get('history_ids', []):
             try:
@@ -119,6 +120,9 @@ def create_router(store):
                 warnings.append(str(exc.detail))
                 continue
             available_metrics.update(record['metadata'])
+            available_axes.update(record.get('axes', []))
+            available_axes.update(key for row in record['records'] for key in ('tokens', 'step', 'elapsed_s')
+                                  if isinstance(row.get(key), (int, float)))
             points = [{'x': r[axis], 'y': r['value']} for r in record['records'] if r['metric'] == metric and isinstance(r.get(axis), (int, float))]
             if points:
                 partitioned = [points[0]]
@@ -136,7 +140,7 @@ def create_router(store):
             result.append({'id': identity,
                            'name': record.get('display_name') or record.get('name') or identity,
                            'points': points})
-        return {'series': result, 'warnings': warnings, 'metrics': sorted(available_metrics)}
+        return {'series': result, 'warnings': warnings, 'metrics': sorted(available_metrics), 'axes': sorted(available_axes)}
 
     @router.get('/api/templates')
     @router.get('/api/analysis/templates')

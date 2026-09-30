@@ -27,22 +27,39 @@ def project_or_404(store, id):
     return item
 
 
+def project_payload(store, project):
+    config = project.get("config", {})
+    settings = local_settings(store)
+    return {**config, "path": project.get("remote_path"),
+            "python": config.get("python", settings["remote_python"]),
+            "runs_root": config.get("runs_root", settings["remote_runs_root"]),
+            "data_root": config.get("data_root", settings["remote_data_root"])}
+
+
+def validate_schema(schema, parameters):
+    integration = schema.get("integration", {})
+    workers_parameter = integration.get("runtime", {}).get("workers_parameter")
+    return validate_parameters(schema["fields"], parameters,
+                               controlled_keys=schema.get("controlled_keys", []),
+                               workers_parameter=workers_parameter)
+
+
 def schema_for(store, id, code=None, refresh=False):
     project = project_or_404(store, id)
     code = code or project.get("code", {"kind": "working_tree", "ref": None})
     cached = store.get("schemas", id)
-    if not refresh and cached and cached.get("code") == code:
+    if not refresh and cached and cached.get("code") == code and cached.get("config", {}) == project.get("config", {}):
         return cached
-    result = remote(project["ssh_alias"], "read_schema", {"path": project["remote_path"], "code": code, "python": project.get("config", {}).get("python", local_settings(store)["remote_python"])})
+    result = remote(project["ssh_alias"], "read_schema", {**project_payload(store, project), "code": code})
     fields = result.get("fields", result.get("schema", []))
     if not isinstance(fields, list):
         raise HTTPException(502, "远端没有返回可用参数定义")
-    result = {**result, "fields": fields, "code": code}
+    result = {**result, "fields": fields, "code": code, "config": project.get("config", {})}
     store.put("schemas", id, result)
     project["code"] = code
     store.put("projects", id, project)
     if not any(p["project_id"] == id for p in store.list("presets")) and not project.get("initialized"):
-        defaults = validate_parameters(fields, {"training": {}, "runtime": {"gpu_count": 8}})["parameters"]
+        defaults = validate_schema(result, {"training": {}, "runtime": {"gpu_count": 1}})["parameters"]
         preset_id = str(uuid.uuid4())
         store.put("presets", preset_id, {"id": preset_id, "project_id": id, "name": "源码默认值", "parameters": defaults})
         project["initialized"] = True
@@ -63,6 +80,8 @@ def create_router(store):
         name = str(body.get("name", "")).strip()
         path = str(body.get("remote_path", body.get("path", "")))
         alias = str(body.get("ssh_alias", body.get("host", local_settings(store)["ssh_alias"])))
+        if not isinstance(body.get("config", {}), dict):
+            raise HTTPException(422, "项目配置必须为 JSON 对象")
         if not name or not path.startswith("/") or "\0" in path or not re.fullmatch(r"[A-Za-z0-9_.-]+", alias) or alias.startswith("-"):
             raise HTTPException(422, "填写项目名称、SSH 别名和远端绝对目录")
         existing = next((p for p in store.list("projects") if p["ssh_alias"] == alias and p["remote_path"] == path), None)
@@ -75,6 +94,8 @@ def create_router(store):
         for key in ("name", "config", "code"):
             if key in body:
                 item[key] = body[key]
+        if not isinstance(item.get("config", {}), dict):
+            raise HTTPException(422, "项目配置必须为 JSON 对象")
         if not str(item["name"]).strip():
             raise HTTPException(422, "项目名不能为空")
         if body.get('is_default') is True:
@@ -95,7 +116,7 @@ def create_router(store):
     @router.post("/projects/{id}/inspect")
     def inspect(id: str):
         p = project_or_404(store, id)
-        return remote(p["ssh_alias"], "inspect_project", {"path": p["remote_path"]})
+        return remote(p["ssh_alias"], "inspect_project", project_payload(store, p))
 
     @router.post("/projects/{id}/schema")
     def schema(id: str, body: dict = {}):
@@ -112,7 +133,7 @@ def create_router(store):
         parameters = body.get("parameters", {})
         if "parameters" in parameters:
             parameters = parameters["parameters"]
-        result = validate_parameters(schema_for(store, id)["fields"], parameters)
+        result = validate_schema(schema_for(store, id), parameters)
         if result["errors"]:
             raise HTTPException(422, result)
         with store.lock:
@@ -167,13 +188,13 @@ def create_router(store):
 
     @router.post("/projects/{id}/parameters/validate")
     def validate(id: str, body: dict):
-        return validate_parameters(schema_for(store, id)["fields"], body.get("parameters", body))
+        return validate_schema(schema_for(store, id), body.get("parameters", body))
 
     @router.get("/projects/{id}/editor-initial")
     def initial(id: str):
         schema = schema_for(store, id)
         last = store.get("last_runs", id)
-        result = validate_parameters(schema["fields"], last["parameters"] if last else {"training": {}, "runtime": {"gpu_count": 8}})
+        result = validate_schema(schema, last["parameters"] if last else {"training": {}, "runtime": {"gpu_count": 1}})
         return {**result["parameters"], "source": "last_run" if last else "defaults", "warnings": result["warnings"] if last else [], "errors": result["errors"]}
 
     @router.get("/projects/{id}/parameter-display")

@@ -62,7 +62,7 @@ def create_router(store, cache_root: Path):
 
     @router.post('/api/history/{identity}/resume-editor')
     def resume_editor(identity: str):
-        from ai_exp_app.projects.api import remote
+        from ai_exp_app.projects.api import project_payload, remote
         record = get(identity)
         source = record['source']
         if source['kind'] != 'remote' or record.get('remote_deleted'):
@@ -76,12 +76,12 @@ def create_router(store, cache_root: Path):
         if not project:
             raise HTTPException(422, '请先添加此云端实验使用的代码项目')
         value = remote(source.get('ssh_alias', 'gpu'), 'checkpoint_preview', {
-            'path': source['path'], 'python': project.get('config', {}).get('python')})
+            'path': source['path'], 'project': {**project_payload(store, project), 'code': project.get('code', {'kind': 'working_tree', 'ref': None})}})
         ticket = secrets.token_urlsafe(24)
         store.put('resume_drafts', ticket, {'id': ticket, 'history_id': identity,
             'ssh_alias': source.get('ssh_alias', 'gpu'), 'path': value['path'], 'identity': value['identity']})
         return {'training': value['training'], 'runtime': value['runtime'], 'project_id': project['id'],
-                'resume': {'ticket': ticket, 'path': value['path'], 'tokens_seen': value['tokens_seen']},
+                'resume': {'ticket': ticket, 'path': value['path'], 'tokens_seen': value.get('tokens_seen'), 'step': value.get('step')},
                 'display_name': record['name'] + ' · 续跑'}
 
     @router.post('/api/history/refresh')

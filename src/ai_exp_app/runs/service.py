@@ -2,9 +2,7 @@ import time
 import uuid
 import base64
 from fastapi import APIRouter, HTTPException
-from ai_exp_app.projects.api import project_or_404, remote, schema_for
-from ai_exp_app.parameters.validation import validate_parameters
-from ai_exp_app.config import local_settings
+from ai_exp_app.projects.api import project_or_404, project_payload, remote, schema_for, validate_schema
 
 
 def apply_started_event(store, event: dict) -> bool:
@@ -123,7 +121,7 @@ class RunService:
             project = project_or_404(self.store, body.get("project_id", ""))
             code = body.get("code") or project.get("code", {"kind": "working_tree", "ref": None})
             schema = schema_for(self.store, project["id"], code, refresh=True)
-            result = validate_parameters(schema["fields"], body.get("parameters", {}))
+            result = validate_schema(schema, body.get("parameters", {}))
             if result["errors"]:
                 raise HTTPException(422, result)
             id = body.get("run_id") or body.get("request_id") or str(uuid.uuid4())
@@ -132,8 +130,7 @@ class RunService:
                 mode = "start"
             if mode not in {"start", "queue"}:
                 raise HTTPException(422, "请选择启动或加入队列")
-            config = project.get("config", {})
-            payload = {"run_id": id, "project_id": project["id"], "display_name": body.get("display_name") or body.get("name") or project["name"], "parameters": result["parameters"], "code": code, "mode": mode, "project": {"path": project["remote_path"], "python": config.get("python", local_settings(self.store)["remote_python"]), "runs_root": config.get("runs_root", local_settings(self.store)["remote_runs_root"]), "data_root": config.get("data_root", local_settings(self.store)["remote_data_root"])}}
+            payload = {"run_id": id, "project_id": project["id"], "display_name": body.get("display_name") or body.get("name") or project["name"], "parameters": result["parameters"], "code": code, "mode": mode, "project": {**project_payload(self.store, project), **({"integration": schema["integration"]} if "integration" in schema else {})}}
             request_id = body.get("request_id") or id
             if body.get('resume_ticket'):
                 draft = self.store.get('resume_drafts', body['resume_ticket'])

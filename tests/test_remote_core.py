@@ -44,7 +44,8 @@ def test_schema_uses_parser_without_main(tmp_path):
     (tmp_path/'train.py').write_text('import argparse\ndef build_parser():\n p=argparse.ArgumentParser()\n p.add_argument("--lr",type=float,default=.01)\n p.add_argument("--run-dir")\n return p\nif __name__ == "__main__": raise RuntimeError("must not run")\n')
     result=read_schema(dict(path=str(tmp_path),python=sys.executable))
     assert result['fields'][0]['key']=='lr'
-    assert len(result['fields'])==1
+    assert len(result['fields'])==2
+    assert result['controlled_keys']==[]
 
 
 def test_failed_run_log_contains_launcher_traceback(tmp_path):
