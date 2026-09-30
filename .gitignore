@@ -12,3 +12,9 @@ web/playwright-report/
 dist/
 .DS_Store
 config.local.json
+docs/superpowers/
+docs/validation/
+*.tsbuildinfo
+*.dmg
+*.app/
+*.bundle

@@ -27,7 +27,7 @@ def main():
         if target.exists(): shutil.rmtree(target)
         shutil.copytree(source,target,symlinks=True)
     subprocess.run(["swiftc", "-sdk", SDK, '-target', platform.machine()+'-apple-macos13.0', "-swift-version", "5", "-framework", "AppKit", "-framework", "WebKit", "-framework", "UserNotifications", str(ROOT / "macos" / "AIExperiment" / "main.swift"), "-o", str(binary / "AIExperiment")], check=True)
-    info = {"CFBundleName": "实验工作台", "CFBundleDisplayName": "实验工作台", "CFBundleIdentifier": "org.ai-experiment.workbench", "CFBundleExecutable": "AIExperiment", "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "0.1.0", "CFBundleVersion": "1", "NSHighResolutionCapable": True, "NSAppleEventsUsageDescription": "复用并聚焦已有的实验工作台网页，避免重复打开标签。", "AIExperimentRoot": str(ROOT), "CFBundleIconFile": "AppIcon"}
+    info = {"CFBundleName": "实验工作台", "CFBundleDisplayName": "实验工作台", "CFBundleIdentifier": "org.ai-experiment.workbench", "CFBundleExecutable": "AIExperiment", "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "2", "NSHighResolutionCapable": True, "NSAppleEventsUsageDescription": "复用并聚焦已有的实验工作台网页，避免重复打开标签。", "AIExperimentRoot": str(ROOT), "CFBundleIconFile": "AppIcon"}
     (APP / "Contents" / "Info.plist").write_bytes(plistlib.dumps(info))
     info.pop('AIExperimentRoot', None)
     info.pop('NSAppleEventsUsageDescription', None)
