@@ -1,5 +1,7 @@
 # AI Experiment · 实验工作台
 
+[![CI](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml)
+
 通过 SSH 管理 GPU 实验，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端训练和队列。
 
 当前为早期版本，训练启动、参数读取和严格续跑首先适配 **launcher 风格的 PyTorch 项目**，尚不是任意 GitHub 项目开箱即用的训练器。图表与表格可使用本地缓存离线生成。
@@ -19,7 +21,7 @@
 
 ### macOS 应用
 
-公开安装包通过本仓库的 **Releases** 分发，DMG 不存放在 Git 仓库。首次 Release 发布前，可按下文从源码构建。
+公开安装包通过本仓库的 [Releases](https://github.com/Bruce-lhq/ai-exp-app/releases) 分发，DMG 不存放在 Git 仓库。首次 Release 发布前，可按下文从源码构建。
 
 1. 下载与机器架构匹配的 `AI-Experiment-macOS.dmg`，打开后将 `AI Experiment.app` 拖入“应用程序”。
 2. 打开应用，按首次设置填写 SSH 别名和目录；也可选择“稍后设置”先导入本地历史。
@@ -31,10 +33,10 @@
 
 本地要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm；当前验收环境为 macOS。Linux 可使用网页入口，但尚未完成完整平台验收；Windows 原生入口暂不支持。
 
-将 `YOUR_ACCOUNT` 替换成仓库拥有者，并确保已配置 GitHub SSH：
+确保已配置 GitHub SSH，然后下载源码：
 
 ```bash
-git clone git@github.com:YOUR_ACCOUNT/ai-exp-app.git
+git clone git@github.com:Bruce-lhq/ai-exp-app.git
 cd ai-exp-app
 uv venv --python 3.12
 uv pip sync requirements.lock
@@ -187,4 +189,4 @@ npm run test:e2e
 
 ## License
 
-[MIT](LICENSE)。第三方依赖保留各自许可证。
+[MIT](LICENSE)。第三方依赖保留各自许可证；Mac 安装包包含项目 License 和第三方许可证清单。
