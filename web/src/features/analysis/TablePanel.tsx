@@ -38,9 +38,16 @@ export function TablePanel({
     [difference, setDifference] = useState(false),
     [parameterChoice, setParameterChoice] = useState("");
   const [templateLoaded, setTemplateLoaded] = useState(false);
+  const [columnKind, setColumnKind] = useState("parameter");
   const [metricChoice, setMetricChoice] = useState("val_ppl");
   const [parameterEdits, setParameterEdits] = useState<Record<string, Record<string, string>>>({});
   const [parameterRevision, setParameterRevision] = useState(0);
+  function originalParameter(identity: string, field: string) {
+    const h = history.find((h) => h.id === identity);
+    if (Array.isArray(h?.parameter_original_fields)) return h.parameter_original_fields.includes(field);
+    const p = h?.original_parameters || h?.parameters || {};
+    return [p, p.training, p.runtime].some((group) => group && Object.hasOwn(group, field));
+  }
   function parameterText(identity: string, field: string) {
     const parameters = history.find((h) => h.id === identity)?.parameters || {};
     const value = parameterEdits[identity]?.[field] ?? parameters[field] ?? parameters.training?.[field] ?? parameters.runtime?.[field];
@@ -106,13 +113,13 @@ export function TablePanel({
     return () => {
       alive = false;
     };
-  }, [JSON.stringify(orderedIds), baseline, JSON.stringify(effective), parameterRevision]);
+  }, [JSON.stringify(orderedIds), baseline, JSON.stringify(effective), parameterRevision, JSON.stringify(history.map((h) => [h.id, h.content_revision]))]);
   async function saveParameter(identity: string, field: string, value: string) {
     try {
       await api(`/api/history/${identity}/parameters`, { field, value }, "PATCH");
       setParameterEdits((current) => ({ ...current, [identity]: { ...current[identity], [field]: value.trim() } }));
       setParameterRevision((value) => value + 1);
-      notify("已保存到本地 args.json");
+      notify("缺失参数的补充已保存，原始 args 保持不变");
     } catch (error) {
       notify(`保存失败：${(error as Error).message}`);
     }
@@ -152,7 +159,7 @@ export function TablePanel({
       field: field || undefined,
       aggregate: kind === "metric" ? (field === "tokens_per_second" ? "final" : "min") : undefined,
       title:
-        (field === "tokens_per_second" ? "速度 (K tok/s)" : field) ||
+        (field === "tokens_per_second" ? "速度 (tok/s)" : field) ||
         {
           notes: "备注",
           parameter_count: "参数量",
@@ -186,7 +193,7 @@ export function TablePanel({
         <div>
           <h3>实验列表</h3>
           <small className="muted">
-            差值使用原始精度计算，列头改名不改变数据。
+            已记录超参数只读，缺失字段可补填。差值使用原始精度计算。
           </small>
         </div>
         <div className="row">
@@ -301,32 +308,24 @@ export function TablePanel({
                   <option value="final">final</option>
                 </select>
               )}
-              <select
-                aria-label="数字格式"
-                value={c.format?.type || "fixed"}
-                onChange={(e) =>
-                  update(c.id, {
-                    format: { ...c.format, type: e.target.value },
-                  })
-                }
-              >
-                <option value="fixed">小数</option>
-                <option value="scientific">科学计数</option>
-                <option value="compact">K / M / B</option>
-              </select>
-              <input
-                className="digits"
-                aria-label="小数位数"
-                type="number"
-                min="0"
-                max="12"
-                value={c.format?.digits ?? 3}
-                onChange={(e) =>
-                  update(c.id, {
-                    format: { ...c.format, digits: Number(e.target.value) },
-                  })
-                }
-              />
+              {!["notes", "name"].includes(c.kind) && (
+                <>
+                  <select aria-label={`数字格式 ${c.title}`} style={{ width: "calc(6em + 30px)", minWidth: 0 }}
+                    value={c.format?.type === "compact" ? "compact" : "fixed"}
+                    onChange={(e) => update(c.id, { format: { type: e.target.value, digits: Math.max(e.target.value === "compact" ? 1 : 0, c.format?.digits ?? 2) } })}>
+                    <option value="compact">有效位数</option><option value="fixed">小数点后位数</option>
+                  </select>
+                  <input className="digits" aria-label={`位数 ${c.title}`} type="number"
+                    style={{ width: `calc(${(c.format?.digits ?? 2) >= 10 ? 2 : 1}ch + 30px)`, minWidth: 0, paddingInline: 4 }}
+                    min={c.format?.type === "compact" ? 1 : 0} max={12}
+                    value={c.format?.digits ?? 2}
+                    onChange={(e) => {
+                      const digits = Number(e.target.value);
+                      if (Number.isInteger(digits) && digits >= (c.format?.type === "compact" ? 1 : 0) && digits <= 12)
+                        update(c.id, { format: { type: c.format?.type === "compact" ? "compact" : "fixed", digits } });
+                    }} />
+                </>
+              )}
               <button
                 className="icon"
                 aria-label="移除此列"
@@ -341,18 +340,20 @@ export function TablePanel({
             </div>
           ))}
           <div className="toolbar">
-            <select aria-label="选择超参数列" value={parameterChoice} onChange={(e) => setParameterChoice(e.target.value)}>
-              <option value="">选择超参数列</option>
-              {parameterFields.map((field) => { const owner = history.find((h) => h.parameter_labels?.[field] || h.parameters?.parameter_labels?.[field]); return <option key={field} value={field}>{owner?.parameter_labels?.[field] || owner?.parameters?.parameter_labels?.[field] || field}</option>; })}
-            </select>
-            <button disabled={!parameterFields.length} onClick={() => parameterChoice && addParameter(parameterChoice)}>
-              <Plus size={14} />
-              增加超参数列
-            </button>
-            <select aria-label="选择指标列" value={metricChoice} onChange={(e) => setMetricChoice(e.target.value)}>
-              {[...new Set([...metrics, "tokens_per_second"])].map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (K tok/s)" : metric}</option>)}
-            </select>
-            <button onClick={() => add("metric")}>增加指标与差值</button>
+            <label>类型：<select aria-label="列类型" value={columnKind} onChange={(e) => setColumnKind(e.target.value)}>
+              <option value="parameter">超参数</option><option value="metric">指标</option>
+            </select></label>
+            {columnKind === "parameter" ? <label>选择超参数：
+              <select aria-label="选择超参数列" value={parameterChoice} onChange={(e) => setParameterChoice(e.target.value)}>
+                <option value="">请选择</option>
+                {parameterFields.map((field) => { const owner = history.find((h) => h.parameter_labels?.[field] || h.parameters?.parameter_labels?.[field]); return <option key={field} value={field}>{owner?.parameter_labels?.[field] || owner?.parameters?.parameter_labels?.[field] || field}</option>; })}
+              </select>
+            </label> : <label>选择指标：
+              <select aria-label="选择指标列" value={metricChoice} onChange={(e) => setMetricChoice(e.target.value)}>
+                {[...new Set([...metrics, "tokens_per_second"])].filter((m) => !m.startsWith("ca/")).map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (tok/s)" : metric}</option>)}
+              </select>
+            </label>}
+            <button disabled={columnKind === "parameter" && !parameterChoice} onClick={() => columnKind === "parameter" ? addParameter(parameterChoice) : add("metric")}><Plus size={14} />添加</button>
             <button onClick={() => add("notes")}>备注列</button>
             <button onClick={() => save(false)}>
               <Save size={14} />
@@ -382,19 +383,35 @@ export function TablePanel({
               <tr key={orderedIds[i] || i} draggable onDragStart={() => setRowDrag(i)} onDragOver={(e) => e.preventDefault()} onDrop={() => setRowOrder(move(orderedIds, rowDrag, i))}>
                 <td className="drag-cell"><GripVertical size={14} /></td>
                 {row.map((cell: any, j: number) => (
-                  <td key={j}>{effective[j]?.kind === "parameter" ? (
+                  <td key={j}>{effective[j]?.kind === "parameter" && !originalParameter(orderedIds[i], effective[j].field!) ? (
                     <input
                       key={`${orderedIds[i]}:${effective[j].field}:${cell}`}
                       aria-label={`${history.find((h) => h.id === orderedIds[i])?.name || orderedIds[i]} ${effective[j].title}`}
-                      defaultValue={parameterText(orderedIds[i], effective[j].field!)}
+                      defaultValue={cell ?? ""}
+                      onFocus={(e) => { e.target.value = parameterText(orderedIds[i], effective[j].field!); }}
                       onBlur={(e) => {
                         const value = e.target.value.trim();
                         e.target.value = value;
                         if (value !== parameterText(orderedIds[i], effective[j].field!))
                           void saveParameter(orderedIds[i], effective[j].field!, value);
+                        else e.target.value = cell ?? "";
                       }}
                       onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
                     />
+                  ) : effective[j]?.kind === "notes" ? (
+                    <input key={`${orderedIds[i]}:notes:${cell}`} aria-label={`${history.find((h) => h.id === orderedIds[i])?.name || orderedIds[i]} 备注`}
+                      defaultValue={cell ?? ""}
+                      onBlur={async (e) => {
+                        const value = e.target.value.trim();
+                        e.target.value = value;
+                        if (value === (cell ?? "")) return;
+                        try {
+                          await api(`/api/history/${orderedIds[i]}`, { notes: value }, "PATCH");
+                          setParameterRevision((n) => n + 1);
+                          notify("备注已保存");
+                        } catch (error) { notify(`保存失败：${(error as Error).message}`); }
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
                   ) : cell ?? "—"}</td>
                 ))}
               </tr>

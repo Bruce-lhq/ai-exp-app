@@ -63,7 +63,7 @@ def create_router(store):
         groups, result = {}, {}
         for identity in dict.fromkeys(identities):
             run = store.get('runs', identity)
-            if run and run.get('external'):
+            if run and run.get('remote_path'):
                 groups.setdefault(run.get('ssh_alias', 'gpu'), []).append(run)
         for alias, runs in groups.items():
             paths = [{'id': run['id'], 'path': run['remote_path']} for run in runs]

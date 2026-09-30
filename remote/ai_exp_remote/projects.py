@@ -7,7 +7,7 @@ import tempfile
 from .snapshot import create_snapshot
 from .state import AgentError
 
-PYTHON = '/your_exp/venv/bin/python'
+PYTHON = 'python3'
 CONTROLLED = {'data_root','run_dir','resume','allow_nonexact_resume','allow_world_size_change','config_index','config_total','config_name','config_description'}
 PROBE = r'''
 import argparse, importlib.util, json, sys, contextlib

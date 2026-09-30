@@ -44,4 +44,4 @@ def test_missing_ca_metric_skips_baseline_and_switching_metric_restores_it(tmp_p
     assert [s['id'] for s in response['series']] == ids
     table = client.post('/api/analysis/table', json={'history_ids': ids, 'columns': [
         {'id': 'r', 'kind': 'metric', 'field': 'R_min', 'aggregate': 'min', 'title': 'R_min'}]}).json()
-    assert table['rows'] == [['—'], ['0.2 @1B']]
+    assert table['rows'] == [['—'], ['0.20 @1.00B']]

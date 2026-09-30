@@ -21,6 +21,7 @@ from ai_exp_app.history.worker import sync_once
 def create_app(data_dir: Path | None = None) -> FastAPI:
     config = Config.load(data_dir)
     store = Store(config.data_dir / "app.sqlite3")
+    store.config = config
     runs = RunService(store)
     token_file = config.data_dir / "desktop-token"
     if not token_file.exists():
@@ -63,6 +64,18 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(project_router(store))
     app.include_router(runs.create_router())
     app.include_router(history_router(store, config.cache_root))
+
+    @app.get("/api/settings/local")
+    def local_settings():
+        return {"local_settings": config.local_settings, "configured": config.configured}
+
+    @app.put("/api/settings/local")
+    def save_local_settings(body: dict):
+        try:
+            config.save_local_settings(body)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        return local_settings()
 
     @app.get("/api/health")
     def health():

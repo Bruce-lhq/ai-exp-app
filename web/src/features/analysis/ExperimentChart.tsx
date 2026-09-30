@@ -32,22 +32,30 @@ export const palette = [
   "#8C564B",
   "#FF9DA7",
 ];
-function colorFor(series: Series, index: number, appearance: Record<string, { name?: string; color?: string }>) {
-  if (appearance[series.id]?.color) return appearance[series.id]!.color!;
-  const used = new Set<string>();
-  for (const item of Object.values(appearance)) if (item.color) used.add(item.color.toLowerCase());
-  for (let i = 0; i < palette.length; i++) {
-    const color = palette[(index + i) % palette.length];
-    if (!used.has(color.toLowerCase())) return color;
-  }
-  const hue = (index * 137.508) % 360;
-  return `hsl(${hue} 62% 45%)`;
+export function seriesColors(series: Series[], appearance: Record<string, { color?: string }>) {
+  const used = new Set(Object.values(appearance).flatMap(item => item.color ? [item.color.toLowerCase()] : []));
+  return series.map((item, index) => {
+    if (appearance[item.id]?.color) return appearance[item.id].color!;
+    let color = palette.find(value => !used.has(value.toLowerCase()));
+    for (let n = index; !color; n++) {
+      const hue = (n * 137.508) % 360;
+      const rgb = [0, 8, 4].map(offset => {
+        const k = (offset + hue / 30) % 12;
+        return Math.round(255 * (0.45 - 0.279 * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+      });
+      const candidate = '#' + rgb.map(value => value.toString(16).padStart(2, '0')).join('');
+      if (!used.has(candidate)) color = candidate;
+    }
+    used.add(color.toLowerCase());
+    return color;
+  });
 }
 export function chartConfiguration(
   series: Series[],
   settings: ChartSettings,
   appearance: Record<string, { name?: string; color?: string; order?: number }> = {},
 ) {
+  const colors = seriesColors(series, appearance);
   const fontFamily = '"Hiragino Sans GB", "DejaVu Sans", sans-serif';
   return {
     type: "line" as const,
@@ -64,8 +72,8 @@ export function chartConfiguration(
           x: settings.xAxis === "tokens" ? p.x / 1_000_000_000 : p.x,
           y: p.y,
         })),
-        borderColor: colorFor(s, i, appearance),
-        backgroundColor: colorFor(s, i, appearance),
+        borderColor: colors[i],
+        backgroundColor: colors[i],
         borderWidth: 2.6,
         // The reference plot samples densely; visible markers make sparse runs look like bubbles.
         pointRadius: 0,

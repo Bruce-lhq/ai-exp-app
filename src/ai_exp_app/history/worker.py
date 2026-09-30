@@ -8,9 +8,14 @@ def sync_once(store, cache_root):
     for run in store.list('runs'):
         if run.get('external') and not run.get('adopted'):
             continue
+        if run.get('status') == 'stopped' and run.get('mode') == 'queue' and not run.get('attempt_id'):
+            continue
         identity = run['id']
         with run_lock(identity):
-            existing = store.get('history', identity)
+            existing = store.get('history', identity) or next((h for h in store.list('history')
+                if h.get('source', {}).get('kind') == 'remote'
+                and h['source'].get('path') == (run.get('run_dir') or run.get('remote_path'))
+                and h['source'].get('ssh_alias', 'gpu') == run.get('ssh_alias', 'gpu')), None)
             path = run.get('run_dir') or run.get('remote_path') or run.get('output_dir') or run.get('path')
             if not path or (existing and existing.get('visibility') == 'removed'):
                 continue
@@ -40,7 +45,8 @@ def sync_once(store, cache_root):
             record = store.get('history', candidate['id'])
             if not record or record.get('visibility') == 'removed' or record.get('remote_deleted'):
                 continue
-            if record.get('sync_status') == 'synced' and record.get('status') not in {'running', 'stopping', 'starting'}:
+            needs_checkpoint = record.get('status') in TERMINAL and 'latest.pt' not in record.get('files', []) and not any('没有 latest.pt' in w for w in record.get('warnings', []))
+            if record.get('sync_status') == 'synced' and record.get('status') not in {'running', 'stopping', 'starting'} and not needs_checkpoint:
                 continue
             alias = record['source'].get('ssh_alias', 'gpu') if record['source']['kind'] == 'remote' else None
             if record.get('next_retry_at', 0) > time.time() or (alias and alias in failed_aliases):

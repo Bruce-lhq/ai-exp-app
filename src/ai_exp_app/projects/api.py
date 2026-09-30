@@ -5,12 +5,13 @@ from pathlib import PurePosixPath
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from ai_exp_app.parameters.validation import validate_parameters
+from ai_exp_app.config import local_settings
 
 
 def remote(alias, operation, payload, request_id=None):
     from ai_exp_app.transport.ssh import call_remote
     try:
-        return call_remote(alias, {"version": 1, "request_id": request_id or str(uuid.uuid4()), "operation": operation, "payload": payload}, timeout_s=40)
+        return call_remote(alias, {"version": 1, "request_id": request_id or str(uuid.uuid4()), "operation": operation, "payload": payload}, timeout_s=150 if operation in {'checkpoint_preview', 'submit', 'resume'} else 40)
     except Exception as exc:
         detail = str(exc)
         if getattr(exc, 'details', None):
@@ -32,7 +33,7 @@ def schema_for(store, id, code=None, refresh=False):
     cached = store.get("schemas", id)
     if not refresh and cached and cached.get("code") == code:
         return cached
-    result = remote(project["ssh_alias"], "read_schema", {"path": project["remote_path"], "code": code, "python": project.get("config", {}).get("python", "/your_exp/venv/bin/python")})
+    result = remote(project["ssh_alias"], "read_schema", {"path": project["remote_path"], "code": code, "python": project.get("config", {}).get("python", local_settings(store)["remote_python"])})
     fields = result.get("fields", result.get("schema", []))
     if not isinstance(fields, list):
         raise HTTPException(502, "远端没有返回可用参数定义")
@@ -61,7 +62,7 @@ def create_router(store):
     def create_project(body: dict):
         name = str(body.get("name", "")).strip()
         path = str(body.get("remote_path", body.get("path", "")))
-        alias = str(body.get("ssh_alias", body.get("host", "gpu")))
+        alias = str(body.get("ssh_alias", body.get("host", local_settings(store)["ssh_alias"])))
         if not name or not path.startswith("/") or "\0" in path or not re.fullmatch(r"[A-Za-z0-9_.-]+", alias) or alias.startswith("-"):
             raise HTTPException(422, "填写项目名称、SSH 别名和远端绝对目录")
         existing = next((p for p in store.list("projects") if p["ssh_alias"] == alias and p["remote_path"] == path), None)
@@ -89,7 +90,7 @@ def create_router(store):
 
     @router.post("/remote/browse")
     def browse(body: dict):
-        return remote(body.get("ssh_alias", "gpu"), "list_directory", {"path": body.get("path", "/your_exp/projects")})
+        return remote(body.get("ssh_alias", local_settings(store)["ssh_alias"]), "list_directory", {"path": body.get("path", local_settings(store)["remote_projects_root"])})
 
     @router.post("/projects/{id}/inspect")
     def inspect(id: str):

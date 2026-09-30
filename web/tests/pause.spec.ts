@@ -19,13 +19,13 @@ test('external run must be adopted before confirmed pause', async ({ page }) => 
   await expect(page.getByRole('button', { name:'暂停实验', exact:true })).toHaveCount(0);
   await page.getByRole('button', { name:'接管进程', exact:true }).click();
   await page.getByRole('button', { name:'暂停实验', exact:true }).click();
-  await expect(page.getByText(/暂停后暂不能通过工作台续跑/)).toBeVisible();
+  await expect(page.getByText(/暂停后可在历史管理中载入续跑到编辑区/)).toBeVisible();
   expect(actions).toEqual(['adopt']);
   await page.getByRole('button', { name:'确认暂停' }).click();
   await expect.poll(() => actions).toEqual(['adopt','pause']);
 });
 
-test('pause requires confirmation and resumes through the shared entry', async ({ page }) => {
+test('pause requires confirmation and monitor has no resume entry', async ({ page }) => {
   let status = 'running';
   const mutations: string[] = [];
   await page.route('**/api/**', async route => {
@@ -49,8 +49,6 @@ test('pause requires confirmation and resumes through the shared entry', async (
   await page.getByRole('button', { name:'确认暂停' }).click();
   await expect(page.getByText('已暂停', { exact:true })).toBeVisible();
   await expect(page.getByRole('button', { name:'继续实验' })).toHaveCount(0);
-  await page.getByRole('button', { name:'严格续跑', exact:true }).click();
-  await page.getByLabel('续跑实验').selectOption('r');
-  await page.getByRole('button', { name:'校验并加入队列' }).click();
-  await expect.poll(() => mutations).toEqual(['pause','resume']);
+  await expect(page.getByRole('button', { name:'严格续跑', exact:true })).toHaveCount(0);
+  expect(mutations).toEqual(['pause']);
 });

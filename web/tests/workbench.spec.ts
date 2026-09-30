@@ -13,13 +13,14 @@ test('training metrics skip only missing curves and speed can be added to table'
    const caOnly = ['R_min','R_mean','update_rms'].includes(requested.metric);
    const ids = caOnly ? ['ca'] : requested.history_ids;
    body = {series:ids.map((id:string)=>({id,name:id,points:[{x:1e9,y:caOnly?.2:42}]})),
-     metrics:['val_ppl','train_ppl','R_min','R_mean','update_rms'],warnings:caOnly?['λ=0：缺少 R_min，跳过此曲线，保留选择']:[]};
+     metrics:['val_ppl','train_ppl','R_min','R_mean','update_rms','ca/L01/T01'],warnings:caOnly?['λ=0：缺少 R_min，跳过此曲线，保留选择']:[]};
   }
   if (path === '/api/analysis/table') { columns=route.request().postDataJSON().columns; body={headers:[],rows:[],warnings:[],markdown:''}; }
   await route.fulfill({json:body});
  });
  await page.goto('/');
  await page.getByRole('button',{name:'画图与列表',exact:true}).click();
+ await expect(page.getByLabel('指标',{exact:true}).locator('option[value="ca/L01/T01"]')).toHaveCount(0);
  await page.getByLabel('指标',{exact:true}).selectOption('R_min');
  await expect(page.getByText('λ=0：缺少 R_min，跳过此曲线，保留选择',{exact:true})).toBeVisible();
  await expect(page.getByRole('img',{name:'R_min 实验曲线'})).toBeVisible();
@@ -31,8 +32,9 @@ test('training metrics skip only missing curves and speed can be added to table'
  await expect(page.getByText('λ=0：缺少 R_min，跳过此曲线，保留选择',{exact:true})).toBeHidden();
  await page.getByRole('tab',{name:'列表',exact:true}).click();
  await page.getByRole('button',{name:'编辑列与模板'}).click();
+ await page.getByLabel('列类型').selectOption('metric');
  await page.getByLabel('选择指标列').selectOption('tokens_per_second');
- await page.getByRole('button',{name:'增加指标与差值'}).click();
+ await page.getByRole('button',{name:'添加',exact:true}).click();
  await expect.poll(()=>columns.some(c=>c.field==='tokens_per_second' && c.aggregate==='final')).toBe(true);
 });
 test('slow live curves do not overlap or restart when status and log update', async ({page}) => {
@@ -131,7 +133,7 @@ test('schema creates initial preset before dependent requests; editor survives w
  else if(path==='/api/connection')body={connected:true};
  else if(path==='/api/queue')body={runs:[],paused:false};
  await route.fulfill({json:body});});
- await page.goto('/');await page.getByRole('button',{name:'配置实验',exact:true}).click();await expect(page.getByLabel('lr',{exact:true})).toHaveValue('0.001');
+ await page.goto('/');await page.getByRole('button',{name:'配置实验',exact:true}).click();await expect(page.getByLabel('lr',{exact:true})).toHaveValue('1e-3');
  await page.getByLabel('lr',{exact:true}).fill('2K');await page.getByRole('button',{name:'运行监控',exact:true}).click();await page.getByRole('button',{name:'配置实验',exact:true}).click();await expect(page.getByLabel('lr',{exact:true})).toHaveValue('2K');
  await page.getByLabel('lr',{exact:true}).fill('invalid');await page.getByLabel('实验名称').fill('example');await expect(page.getByRole('button',{name:'启动实验',exact:true})).toBeDisabled();
  await page.screenshot({path:'test-results/workbench.png',fullPage:true});
@@ -164,7 +166,7 @@ test('default project, two directories and flat history args load correctly', as
  await page.getByRole('button',{name:'历史管理',exact:true}).click();
  await page.getByRole('button',{name:'载入参数到编辑区'}).click();
  await expect(page.getByLabel('常用项目')).toHaveValue('s1');
- await expect(page.getByLabel('lr',{exact:true})).toHaveValue('2000');
+ await expect(page.getByLabel('lr',{exact:true})).toHaveValue('2K');
  await expect(page.getByText('legacy：当前代码没有此参数，已忽略')).toBeVisible();
  page.on('dialog', dialog => dialog.accept());
  await page.getByLabel('常用项目').selectOption('w');
@@ -174,7 +176,7 @@ test('default project, two directories and flat history args load correctly', as
  await page.getByPlaceholder('搜索参数、备注或标签').fill('nothing');
  await page.getByRole('button',{name:'历史管理',exact:true}).click();
  await page.getByRole('button',{name:'载入参数到编辑区'}).click();
- await expect(page.getByLabel('lr',{exact:true})).toHaveValue('2000');
+ await expect(page.getByLabel('lr',{exact:true})).toHaveValue('2K');
  await expect(page.getByPlaceholder('搜索参数、备注或标签')).toHaveValue('');
  expect(errors).toEqual([]);
 });

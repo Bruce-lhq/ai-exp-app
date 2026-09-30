@@ -18,7 +18,7 @@ import {
   type Parameters,
 } from "../../app/api";
 import { DirectoryPicker, Empty } from "../../app/ui";
-import { move, parseValue, same } from "./values";
+import { displayNumber, move, parseValue, same } from "./values";
 type Display = {
   order?: string[];
   aliases?: Record<string, string>;
@@ -59,10 +59,15 @@ export function ParameterPage({
     [warning, setWarning] = useState("");
   const base = `/api/projects/${project}`;
   const [clean, setClean] = useState("");
+  const [resume, setResume] = useState<Parameters['resume']>();
   const generation = useRef(0);
   const [loadedProject, setLoadedProject] = useState("");
   const dirty = JSON.stringify(params) !== clean || Object.values(errors).some(Boolean);
   useEffect(() => {
+    if (historical?.project_id && project && historical.project_id !== project) {
+      setProject(historical.project_id);
+      return;
+    }
     if (!historical || busy || !schema.length || loadedProject !== project) return;
     let alive = true;
     const training = historical.training || historical;
@@ -75,6 +80,11 @@ export function ParameterPage({
         if (error.field in training) next.training[error.field] = training[error.field];
       }
       setParams(next);
+      // A flat args.json may contain an old checkpoint path, not a validated resume ticket.
+      setResume(historical.training && historical.resume && typeof historical.resume === "object"
+        && typeof historical.resume.ticket === "string" && typeof historical.resume.path === "string"
+        && Number.isFinite(historical.resume.tokens_seen) ? historical.resume : undefined);
+      if (historical.display_name) setRunName(historical.display_name);
       setDraft({});
       setErrors(Object.fromEntries((result.errors || []).map((error: any) => [error.field, error.message])));
       setWarning((result.warnings || []).map((w: any) => `${w.field ? w.field + '：' : ''}${w.message || w}`).join('；'));
@@ -96,6 +106,7 @@ export function ParameterPage({
   useEffect(() => {
     if (!project) return;
     setBusy(true);
+    setResume(undefined);
     setLoadedProject("");
     setRefs([]);
     const requestGeneration = ++generation.current;
@@ -168,6 +179,7 @@ export function ParameterPage({
     )
       return;
     setParams(structuredClone(p.parameters));
+    setResume(undefined);
     setClean(JSON.stringify(p.parameters));
     setPreset(p.id);
     setDraft({});
@@ -414,6 +426,7 @@ export function ParameterPage({
                         "将编辑区还原为所选源码的默认值？不会覆盖参数组。",
                       )
                     ) {
+                      setResume(undefined);
                       setParams({
                         training: Object.fromEntries(
                           schema
@@ -446,10 +459,21 @@ export function ParameterPage({
                   />
                   只看差异
                 </label>
-                <label className="gpu-input">
-                  GPU 卡数
+
+              </div>
+              {warning && <p className="warning">{warning}</p>}
+              {resume && <div className="toolbar">
+                <label style={{ flex: 1 }}>resume（严格续跑）<input aria-label="resume" readOnly value={resume.path} style={{ width: '100%' }} /></label>
+                <span>从 {(resume.tokens_seen / 1e9).toFixed(3)}B 恢复</span>
+                <button onClick={() => setResume(undefined)}>取消续跑</button>
+                <p className="muted">请核对代码项目。启动时校验原始训练参数与 GPU 数；结果写入新实验目录。</p>
+              </div>}
+              <div className="parameter-list">
+                <label className="parameter">
+                  <span>gpu_count · 使用 GPU 数</span>
                   <input
                     aria-label="GPU 卡数"
+                    disabled={!!resume}
                     type="number"
                     min="1"
                     step="1"
@@ -464,9 +488,6 @@ export function ParameterPage({
                     }}
                   />
                 </label>
-              </div>
-              {warning && <p className="warning">{warning}</p>}
-              <div className="parameter-list">
                 {sorted.map((f) => (
                   <div
                     className={`parameter ${errors[f.key] ? "invalid" : ""}`}
@@ -557,8 +578,8 @@ export function ParameterPage({
                           }
                         >
                           {f.choices.map((v) => (
-                            <option key={String(v)} value={String(v)}>
-                              {String(v)}
+                            <option key={displayNumber(v)} value={displayNumber(v)}>
+                              {displayNumber(v)}
                             </option>
                           ))}
                         </select>
@@ -571,8 +592,11 @@ export function ParameterPage({
                             }
                             value={
                               draft[f.key] ??
-                              String(params.training[f.key] ?? "")
+                              displayNumber(params.training[f.key] ?? "")
                             }
+                            onBlur={() => {
+                              if (!errors[f.key]) setDraft((current) => { const next = { ...current }; delete next[f.key]; return next; });
+                            }}
                             onChange={(e) => {
                               const text = e.target.value;
                               setDraft((d) => ({ ...d, [f.key]: text }));
@@ -594,7 +618,7 @@ export function ParameterPage({
                           {f.choices && (
                             <datalist id={`choices-${f.key}`}>
                               {f.choices.map((x) => (
-                                <option value={x} key={x} />
+                                <option value={typeof x === "number" ? displayNumber(x) : x} key={x} />
                               ))}
                             </datalist>
                           )}
@@ -668,6 +692,7 @@ export function ParameterPage({
                       display_name: runName,
                       mode,
                       parameters,
+                      resume_ticket: resume?.ticket,
                       code: {
                         kind: code ? "ref" : "working_tree",
                         ref: code || null,

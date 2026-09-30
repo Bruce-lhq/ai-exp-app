@@ -29,6 +29,7 @@ class LocalSessionMiddleware(BaseHTTPMiddleware):
                     return JSONResponse({"detail": "请求必须为 JSON"}, status_code=415)
         response = await call_next(request)
         if not path.startswith("/api/") and request.method == "GET" and "text/html" in response.headers.get("content-type", ""):
+            response.headers["Cache-Control"] = "no-store"
             response.set_cookie("ai_exp_session", self.token, httponly=True, samesite="strict")
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"

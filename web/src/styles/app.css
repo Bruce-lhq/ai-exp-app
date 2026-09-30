@@ -936,6 +936,12 @@ td {
   gap: 10px;
   margin-top: 25px;
 }
+.local-settings-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.local-setting-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.local-setting-field input { width: 100%; }
+.local-settings-advanced { margin-top: 18px; }
+.local-settings-advanced .local-settings-fields { margin-top: 12px; }
+.modal:has(.local-settings-fields) { max-height: calc(100vh - 40px); overflow: auto; }
 .modal pre {
   max-height: 250px;
   overflow: auto;

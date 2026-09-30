@@ -5,7 +5,7 @@ import { Empty } from "../../app/ui";
 import {
   ExperimentChart,
   downloadPng,
-  palette,
+  seriesColors,
   type ChartSettings,
   type Series,
 } from "./ExperimentChart";
@@ -62,6 +62,7 @@ let lastPlot: { key: string; series: Series[]; warnings: string[]; metrics: stri
 const plotKey = (ids: string[], settings: ChartSettings) => JSON.stringify([ids, settings.metric, settings.xAxis]);
 export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   const [view, setView] = useState<"plot" | "table">("plot");
+  const [plotLoading, setPlotLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]),
     [ids, setIds] = useState<string[]>(initialIds),
     [settings, setSettings] = useState<ChartSettings>(initialSettings),
@@ -90,6 +91,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
   }, [JSON.stringify(ids), JSON.stringify(settings)]);
   useEffect(() => {
     let alive = true;
+    setPlotLoading(true);
     api("/api/analysis/series", {
       history_ids: ids,
       metric: settings.metric,
@@ -99,7 +101,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
         if (alive) {
           const snapshot = {key: plotKey(ids, settings), series: x.series || [],
             warnings: (x.warnings || []).map((w: any) => w.message || w),
-            metrics: [...new Set<string>(["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms", ...(x.metrics || [])])]};
+            metrics: [...new Set<string>(["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms", ...(x.metrics || []).filter((m: string) => !m.startsWith("ca/"))])]};
           lastPlot = snapshot;
           setSeries(snapshot.series);
           setWarnings(snapshot.warnings);
@@ -110,11 +112,11 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
         if (alive) {
           setWarnings([e.message]);
         }
-      });
+      }).finally(() => { if (alive) setPlotLoading(false); });
     return () => {
       alive = false;
     };
-  }, [JSON.stringify(ids), settings.metric, settings.xAxis]);
+  }, [JSON.stringify(ids), settings.metric, settings.xAxis, JSON.stringify(history.map((h) => [h.id, h.content_revision]))]);
   const change = (p: Partial<ChartSettings>) =>
     setSettings((s) => ({ ...s, ...p }));
   const nonpositive = series.some((s) =>
@@ -153,6 +155,8 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
                   <label className="check" key={h.id}>
                     <input type="checkbox" checked={ids.includes(h.id)} onChange={(e) => setIds(e.target.checked ? [...ids, h.id] : ids.filter((id) => id !== h.id))} />
                     {h.name || h.display_name}
+                    {history.filter((other) => (other.name || other.display_name) === (h.name || h.display_name)).length > 1 &&
+                      <small className="muted"> · {h.status === "running" || h.status === "external_running" ? "运行中" : h.status === "stopped" ? "已停止" : h.status} · {h.id.slice(0, 8)}</small>}
                   </label>
                 ))}
               </>
@@ -304,7 +308,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
                 <input
                   aria-label={`${s.name} 颜色`}
                   type="color"
-                  value={appearance[s.id]?.color || palette[i % palette.length]}
+                  value={seriesColors(orderedSeries, appearance)[i]}
                   onChange={(e) => {
                     const duplicate = Object.entries(appearance).some(([id, value]) => id !== s.id && value.color?.toLowerCase() === e.target.value.toLowerCase());
                     if (duplicate) { notify("每条曲线需要使用不同颜色"); return; }
@@ -343,6 +347,8 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
             settings={settings}
             appearance={appearance}
           />
+        ) : plotLoading && ids.length > 0 ? (
+          <p role="status" className="empty"><span className="spinner" /> 正在读取本地缓存…</p>
         ) : (
           <Empty>
             <div className="empty-plot">

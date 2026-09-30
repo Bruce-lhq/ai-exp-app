@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from .importer import enrich, import_history
 from .paths import export_basename
-from .sync import ALLOWED_FILES, run_lock, rpc, sync_history, apply_parameter_overrides
+from .sync import ALLOWED_FILES, run_lock, rpc, sync_history
 
 
 def create_router(store, cache_root: Path):
@@ -42,18 +42,47 @@ def create_router(store, cache_root: Path):
     def sync_running():
         imported = []
         for run in store.list('runs'):
-            if not run.get('external') or run.get('status') != 'external_running':
+            if run.get('status') not in {'running', 'stopping', 'external_running'} or not run.get('remote_path'):
                 continue
             try:
-                imported.append(import_history(store, {
+                record = import_history(store, {
                     'kind': 'remote', 'path': run['remote_path'],
                     'ssh_alias': run.get('ssh_alias', 'gpu')}, cache_root,
                     run.get('display_name'), run_id=run['id'], synchronize=True,
-                    visibility='visible'))
+                    visibility='visible')
+                with run_lock(record['id']):
+                    record = get(record['id'])
+                    record.update(status=run['status'], attempts=run.get('attempts', []),
+                                  stop_tokens=run.get('stop_tokens'), sync_failures=0, next_retry_at=0)
+                    imported.append(store.put('history', record['id'], enrich(record)))
             except (ValueError, OSError, RuntimeError) as exc:
                 imported.append({'id': run['id'], 'name': run.get('display_name'),
                                  'sync_status': 'pending', 'sync_error': str(exc)})
         return {'count': len(imported), 'items': imported}
+
+    @router.post('/api/history/{identity}/resume-editor')
+    def resume_editor(identity: str):
+        from ai_exp_app.projects.api import remote
+        record = get(identity)
+        source = record['source']
+        if source['kind'] != 'remote' or record.get('remote_deleted'):
+            raise HTTPException(422, '请导入仍保留 checkpoint 的云端实验目录')
+        run = next((r for r in store.list('runs') if r.get('remote_path') == source['path']), {})
+        candidates = [p for p in store.list('projects') if p.get('ssh_alias', 'gpu') == source.get('ssh_alias', 'gpu')]
+        project = next((p for p in candidates if p['id'] == run.get('project_id')), None)
+        if project is None:
+            default = (store.get('preferences', 'workspace') or {}).get('default_project_id')
+            project = next((p for p in candidates if p['id'] == default or p.get('is_default')), candidates[0] if candidates else None)
+        if not project:
+            raise HTTPException(422, '请先添加此云端实验使用的代码项目')
+        value = remote(source.get('ssh_alias', 'gpu'), 'checkpoint_preview', {
+            'path': source['path'], 'python': project.get('config', {}).get('python')})
+        ticket = secrets.token_urlsafe(24)
+        store.put('resume_drafts', ticket, {'id': ticket, 'history_id': identity,
+            'ssh_alias': source.get('ssh_alias', 'gpu'), 'path': value['path'], 'identity': value['identity']})
+        return {'training': value['training'], 'runtime': value['runtime'], 'project_id': project['id'],
+                'resume': {'ticket': ticket, 'path': value['path'], 'tokens_seen': value['tokens_seen']},
+                'display_name': record['name'] + ' · 续跑'}
 
     @router.post('/api/history/refresh')
     def refresh_history():
@@ -89,7 +118,7 @@ def create_router(store, cache_root: Path):
                 record.update(name=name, display_name=name, cache_dir=str(new))
             for field in ('notes', 'tags'):
                 if field in body:
-                    record[field] = body[field]
+                    record[field] = str(body[field]).strip() if field == 'notes' else body[field]
             visibility = body.get('visibility')
             if 'archived' in body:
                 visibility = 'archived' if body['archived'] else 'visible'
@@ -102,22 +131,23 @@ def create_router(store, cache_root: Path):
     @router.patch('/api/history/{identity}/parameters')
     def edit_parameter(identity: str, body: dict):
         with run_lock(identity):
-            record = get(identity)
+            record = enrich(get(identity))
             field, value = body.get('field'), body.get('value')
             if not isinstance(field, str) or not field or not isinstance(value, str):
                 raise HTTPException(422, '参数名称和值必须为字符串')
             root = Path(record['cache_dir'])
             if not root.resolve().is_relative_to(cache_root) or (root / 'args.json').is_symlink():
                 raise HTTPException(409, '缓存路径异常')
-            record.setdefault('parameter_overrides', {})[field] = value.strip()
-            apply_parameter_overrides(record)
+            if field in {'training', 'runtime'} or field in record['parameter_original_fields']:
+                raise HTTPException(409, 'args 中已记录的超参数不可修改；仅能补充缺失字段')
+            record.setdefault('parameter_annotations', {})[field] = value.strip()
             return store.put('history', identity, enrich(record))
 
     @router.delete('/api/history/{identity}')
     @router.post('/api/history/{identity}/remove')
     def remove(identity: str):
         with run_lock(identity):
-            record = get(identity)
+            record = enrich(get(identity))
             record['visibility'] = 'removed'
             return store.put('history', identity, record)
 
@@ -133,9 +163,13 @@ def create_router(store, cache_root: Path):
             actual = []
             with zipfile.ZipFile(data, 'w', zipfile.ZIP_DEFLATED) as archive:
                 for file in sorted(root.iterdir()) if root.exists() else []:
-                    if file.name in ALLOWED_FILES and file.is_file() and not file.is_symlink():
+                    if file.name in ALLOWED_FILES and file.name != 'parameter_annotations.json' and file.is_file() and not file.is_symlink():
                         archive.write(file, f'{name}/{file.name}')
                         actual.append(file.name)
+                if record.get('parameter_annotations'):
+                    archive.writestr(f'{name}/parameter_annotations.json', json.dumps(record['parameter_annotations'], ensure_ascii=False, indent=2))
+                    if 'parameter_annotations.json' not in actual:
+                        actual.append('parameter_annotations.json')
                 archive.writestr(f'{name}/export_manifest.json', json.dumps({
                     'id': identity, 'name': record['name'], 'status': record['status'],
                     'sync_status': record['sync_status'], 'files': actual, 'exported_at': time.time()}, ensure_ascii=False))

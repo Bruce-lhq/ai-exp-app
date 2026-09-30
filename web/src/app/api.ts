@@ -1,3 +1,14 @@
+let sessionRenewal: Promise<void> | undefined;
+async function renewSession() {
+  if (!sessionRenewal) {
+    sessionRenewal = fetch("/", { credentials: "same-origin", cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("无法重新连接本地服务");
+      })
+      .finally(() => { sessionRenewal = undefined; });
+  }
+  return sessionRenewal;
+}
 export async function api<T = any>(
   path: string,
   body?: unknown,
@@ -8,7 +19,7 @@ export async function api<T = any>(
   const payload = body === undefined && requestMethod !== "GET" ? {} : body;
   const local = path.startsWith("/api/analysis/") && !(body as any)?.live_ids?.length ||
     path.startsWith("/api/templates") || path.startsWith("/api/notifications") ||
-    path === "/api/connection" ||
+    path === "/api/connection" || path === "/api/settings/local" ||
     (path.startsWith("/api/history") && requestMethod === "GET");
   const loading = (delta: number) => {
     if (!local && !options.background && typeof window !== "undefined")
@@ -17,7 +28,7 @@ export async function api<T = any>(
   loading(1);
   let response: Response;
   try {
-    response = await fetch(path, {
+    const request = () => fetch(path, {
       method: requestMethod,
       credentials: "same-origin",
       signal: options.signal,
@@ -25,6 +36,14 @@ export async function api<T = any>(
         payload === undefined ? undefined : { "Content-Type": "application/json" },
       body: payload === undefined ? undefined : JSON.stringify(payload),
     });
+    response = await request();
+    if (response.status === 403) {
+      const error = await response.clone().json().catch(() => null);
+      if (error?.detail === "请从应用首页打开工作台") {
+        await renewSession();
+        response = await request();
+      }
+    }
   } finally {
     loading(-1);
   }
@@ -61,6 +80,9 @@ export function items<T = any>(data: any, key = "items"): T[] {
 }
 export type Project = { id: string; name: string; host: string; path: string };
 export type Parameters = {
+  project_id?: string;
+  display_name?: string;
+  resume?: { ticket: string; path: string; tokens_seen: number };
   training: Record<string, any>;
   runtime: { gpu_count: number };
 };

@@ -6,6 +6,7 @@ import secrets
 import shutil
 import time
 from .state import AgentError
+from .config import settings
 
 ACTIVE = {'queued', 'starting', 'running', 'stopping'}
 
@@ -19,8 +20,10 @@ def inspect(path, state):
         raise AgentError('DELETE_PATH', '删除目标不是实验目录')
     runs = list(state['runs'].values())
     matched = [r for r in runs if Path(r.get('remote_path', '/nonexistent')).resolve() == target]
-    roots = {Path('/your_exp/runs').resolve()}
-    roots.update(Path(r.get('project', {}).get('runs_root', '/your_exp/runs')).resolve() for r in runs)
+    configured = [settings()['remote_runs_root']] + [r.get('project', {}).get('runs_root') for r in runs]
+    roots = {Path(value).resolve() for value in configured if value and Path(value).is_absolute() and Path(value).resolve() != Path('/')}
+    if not roots and not matched:
+        raise AgentError('DELETE_SCOPE', '没有已配置的实验根目录，禁止删除未登记目录')
     if not matched and not any(target.is_relative_to(root) and target != root for root in roots):
         raise AgentError('DELETE_SCOPE', '只能删除已登记实验或实验根目录中的输出目录')
     if any(target == root or root.is_relative_to(target) for root in roots):
