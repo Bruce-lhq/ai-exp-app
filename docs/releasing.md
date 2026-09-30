@@ -8,7 +8,7 @@
 2. 配置 GitHub 远端并上传源码。应使用完成脱敏的历史；私人备份不能作为分支或附件上传。
 3. 等 GitHub Actions 的 backend、frontend 两项通过。本地测试通过不等同于云端 CI 已验证。
 4. 当前 Python、前端、API 和 Mac 构建版本已统一为 `0.2.0`。创建 tag 时使用相应版本；后续发布同步更新这些版本。
-5. 在干净源码检出中按 README 安装依赖，在目标架构的 Mac 上构建。旧自用包不要作为首个公开附件，使用中性应用标识重新构建。
+5. 在干净源码检出中按 README 安装依赖，在目标架构的 Mac 上构建。公开包的 Python 也安装到中性临时目录，避免冻结的 `_sysconfigdata` 带入本机用户名。旧自用包不要作为首个公开附件，使用中性应用标识重新构建。
 6. 在新用户或独立工作空间验收首次设置、本地历史导入、绘图与列表，以及目标远端连接；安装包不应包含用户配置、缓存或私有数据。
 7. 创建 GitHub Release，附上 DMG、SHA-256、平台／架构、最低系统版本、签名状态和已知限制。当前为 ad-hoc 签名，正式公开发行建议完成 Developer ID 签名与公证。
 
@@ -20,6 +20,22 @@ shasum -a 256 AI-Experiment-macOS.dmg > SHA256SUMS.txt
 ```
 
 在 Release 页面上传 `AI-Experiment-macOS.dmg` 与 `SHA256SUMS.txt`，不需要把它们添加到 Git。当前没有自动发布流程，CI 不会创建 tag、发布 Release 或访问 GPU。
+
+## 公开包的中性 Python 环境
+
+只更换源码目录不足以消除 Python 构建配置中的个人路径。公开构建可在干净检出中使用：
+
+```bash
+uv python install --install-dir /tmp/ai-exp-public-python --no-bin 3.12.12
+UV_PYTHON_INSTALL_DIR=/tmp/ai-exp-public-python uv venv --managed-python --python 3.12.12
+uv pip sync requirements.lock
+uv pip install --no-deps -e .
+uv pip install pyinstaller==6.22.3
+npm --prefix web ci
+.venv/bin/python scripts/build_macos.py
+```
+
+使用新建的构建工作空间，不覆盖日常开发的虚拟环境。发布前同时检查包内普通文件和 PyInstaller 的压缩 Python 模块；仅搜索原始二进制字节可能漏掉压缩内容。
 
 ## 私有与公开文件
 
