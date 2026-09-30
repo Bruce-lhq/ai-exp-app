@@ -14,6 +14,10 @@ Start with the user's working command and inspect its real execution unit: snaps
 | Prose logs | Use actual stable metric lines; a small callback is preferable to guessed broad regexes. | Test copied full, missing, partial and malformed lines; never fabricate values. |
 | No metrics | Configure command/logs, then add an authorized minimal logging adapter. | State that curves need observations rather than pretending empty data passed. |
 
+Before snapshotting, inspect actual artifacts and declare project config.exclusions as relative patterns such as ["artifacts", "artifacts/**"]. Names such as data/runs/checkpoints may contain code and are not automatically excluded. Apply the same review to Git versions, symlinks and large files.
+
+The protocol reserves training/runtime for parameter groups and step/tokens_seen/elapsed_s for axes. If a native field collides, choose an explicit editor/metric alias and map it back to the real CLI/native field; preserve source values and document that mapping.
+
 ## Small project-owned adapter
 
 When direct launch cannot faithfully represent the native program, add a focused workbench_adapter.py beside the project manifest. Preserve the original trainer/configs. Use this profile shape:
@@ -50,3 +54,14 @@ Use foreground containers with persistent mounts and inspected device remapping;
 ## Acceptance
 
 Verify snapshot imports/configs, actual effective native values, truthful allocation/visibility, faithful numeric samples and child/job lifecycle. Refresh one changed sample and confirm cache invalidation. Inspect and adapt existing strict resume separately using the save/load checklist in project-profile.md; where authorized compare uninterrupted and resumed tiny runs. If one boundary needs more evidence, finish the verified parts and report that exact pending mechanism. Do not claim untested providers/frameworks were exercised.
+
+## Snapshot failures and dependency roots
+
+| Check result | Repair after inspection |
+| --- | --- |
+| SNAPSHOT_SYMLINK | Identify the actual source target. Select a common source root or create a separate reviewed materialized source mirror. Do not rewrite original links or follow links into credentials/datasets blindly. Exclude external inputs and pass their true paths separately. |
+| SNAPSHOT_LARGE_FILE | Determine whether it is code, a dependency, data or a checkpoint. Move/reuse large dependencies and inputs outside source snapshots with recorded identities, or exclude their exact artifact paths. Do not exclude whole source packages by a guessed directory name. |
+| SOURCE_CHANGED | Find the changing generated/log files; exclude their actual paths or select an immutable Git version. Do not repeatedly copy an actively changing output tree. |
+| Missing imports/dependencies in snapshot | Preserve shared source in the snapshot. Use the real external dependency environment; mutable editable installs pointing at another checkout defeat code selection. Node or other runtimes may need a project-owned dependency-path setup inside their wrapper; record lock/build identities rather than copying private environments indiscriminately. |
+
+Verify any prepared source mirror against the chosen original source and include the adapter/profile. Config and dependencies must resolve from the snapshot or an explicitly versioned external environment. A working source checkout alone does not prove that the frozen launch will work.

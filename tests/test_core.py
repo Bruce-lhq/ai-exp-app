@@ -7,7 +7,7 @@ ORIGIN = {"Origin": "http://testserver"}
 def test_projects_persist_and_delete_only_unfavorites(tmp_path):
     with TestClient(create_app(tmp_path)) as client:
         client.get("/")
-        result = client.post("/api/projects", json={"name": "wonn", "ssh_alias": "gpu", "remote_path": "/project"}, headers=ORIGIN)
+        result = client.post("/api/projects", json={"name": "project-a", "ssh_alias": "gpu", "remote_path": "/project"}, headers=ORIGIN)
         assert result.status_code == 201
         id = result.json()["id"]
     with TestClient(create_app(tmp_path)) as client:

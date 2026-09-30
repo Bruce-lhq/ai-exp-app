@@ -37,7 +37,7 @@ test("parameter workspace small actions survive a complete edit/import/export cy
   const errors: string[] = [], displayUpdates: any[] = [], downloads: string[] = [];
   let presets = [
     { id: "source", name: "源码默认值", project_id: "p", parameters: validate({ training: {}, runtime: { gpu_count: 8 } }).parameters },
-    { id: "saved", name: "wonn", project_id: "p", parameters: validate({ training: { lr: 0.02 }, runtime: { gpu_count: 4 } }).parameters },
+    { id: "saved", name: "project-a", project_id: "p", parameters: validate({ training: { lr: 0.02 }, runtime: { gpu_count: 4 } }).parameters },
   ];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("download", (download) => downloads.push(download.suggestedFilename()));
@@ -47,7 +47,7 @@ test("parameter workspace small actions survive a complete edit/import/export cy
     else await dialog.accept(answers.shift() || "测试值");
   });
   await baseRoutes(page, async (route, path) => {
-    if (path === "/api/projects") { await route.fulfill({ json: [{ id: "p", name: "s1llt", is_default: true }] }); return true; }
+    if (path === "/api/projects") { await route.fulfill({ json: [{ id: "p", name: "project-b", is_default: true }] }); return true; }
     if (path === "/api/projects/p/schema") { await route.fulfill({ json: schema }); return true; }
     if (path === "/api/projects/p/inspect") { await route.fulfill({ json: { branches: ["main", "dev"] } }); return true; }
     if (path === "/api/projects/p/presets") {
@@ -75,13 +75,13 @@ test("parameter workspace small actions survive a complete edit/import/export cy
       await route.fulfill({ json: displayUpdates.at(-1) || {} }); return true;
     }
     if (path === "/api/projects/p/parameters/validate") { await route.fulfill({ json: validate(route.request().postDataJSON().parameters) }); return true; }
-    if (path === "/api/projects/p") { await route.fulfill({ json: { id: "p", name: route.request().postDataJSON()?.name || "s1llt" } }); return true; }
+    if (path === "/api/projects/p") { await route.fulfill({ json: { id: "p", name: route.request().postDataJSON()?.name || "project-b" } }); return true; }
     return false;
   });
   await page.goto("/");
   await page.getByRole("button", { name: "配置实验", exact: true }).click();
   await expect(page.getByLabel("lr", { exact: true })).toHaveValue("0.01");
-  await page.getByRole("button", { name: "wonn", exact: true }).click();
+  await page.getByRole("button", { name: "project-a", exact: true }).click();
   await expect(page.getByLabel("GPU 卡数")).toHaveValue("4");
   await page.getByLabel("lr", { exact: true }).fill("2K");
   await page.getByLabel("optimizer", { exact: true }).selectOption("sgd");

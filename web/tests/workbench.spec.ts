@@ -147,7 +147,7 @@ test('default project, two directories and flat history args load correctly', as
   const path = new URL(route.request().url()).pathname;
   const isS1 = path.includes('/s1/');
   let body: any = [];
-  if (path === '/api/projects') body = [{id:'w',name:'wonn'}, {id:'s1',name:'s1llt',is_default:true}];
+  if (path === '/api/projects') body = [{id:'w',name:'project-a'}, {id:'s1',name:'project-b',is_default:true}];
   else if (path.endsWith('/schema')) body = {fields:[{key:'lr',kind:'number',default:isS1 ? .02 : .01,has_default:true}],code:{kind:'working_tree',ref:null}};
   else if (path.endsWith('/editor-initial')) body = {training:{lr:isS1 ? .02 : .01},runtime:{gpu_count:8}};
   else if (path.endsWith('/parameter-display')) body = {};
