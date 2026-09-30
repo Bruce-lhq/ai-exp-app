@@ -42,6 +42,6 @@ shasum -a 256 AI-Experiment-macOS.dmg > SHA256SUMS.txt
 
 ## 本次依赖审计
 
-`npm audit` 报告 Vitest 和其 `@vitest/mocker` 开发依赖的两项中危提示，来自同一[上游安全公告](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9)。当前 Vitest 3.x 需要升级到已修复的 4.1.11 或更高受维护版本；属于主版本迁移，应单独验证测试与 Vite 兼容性，不直接使用 `npm audit fix --force`。
+Vitest 已升级至 `4.1.11`，修复此前开发依赖的[已知中危问题](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9)。本地单元测试、前端构建和浏览器回归通过，`npm audit`（包含开发依赖）报告零项漏洞；后续仍需定期检查。
 
-当前 `npm audit --omit=dev` 报告零项漏洞；这不替代后续依赖审查。正式发布前建议完成上述开发依赖升级。本次保持现有测试栈，未宣称依赖审计全部通过。
+Mac 构建将项目 MIT License、构建环境的 Python 包许可证、前端生产依赖许可证及 Python 许可证写入应用 `Contents/Resources/`。清单可能包含构建时使用但未实际打包的依赖。
