@@ -317,3 +317,58 @@ def test_nested_original_parameters_and_annotation_export_roundtrip(setup):
     endpoint2 = f"/api/history/{restored['id']}/parameters"
     assert client.patch(endpoint2, json={'field': 'missing', 'value': '8B'}).status_code == 200
     assert json.loads((Path(restored['cache_dir']) / 'args.json').read_text())['training']['lr'] == 0
+
+
+def test_local_import_uses_native_absolute_paths_and_remote_uses_posix(tmp_path):
+    from pathlib import PurePosixPath
+    store = Store(tmp_path / 'state.sqlite3')
+    source = tmp_path / 'native-source'
+    source.mkdir()
+    (source / 'args.json').write_text('{}')
+    record = import_history(store, {'kind': 'local', 'path': str(source)}, tmp_path / 'cache')
+    assert Path(record['source']['path']).is_absolute()
+    assert Path(record['cache_dir']).joinpath('args.json').read_text() == '{}'
+    remote = import_history(store, {'kind': 'remote', 'path': '/srv/runs/remote-run/'},
+                            tmp_path / 'cache', synchronize=False)
+    assert remote['source']['path'] == '/srv/runs/remote-run'
+    assert remote['name'] == 'remote-run'
+    assert PurePosixPath(remote['source']['path']).is_absolute()
+    for path in ('C:\\runs\\experiment', 'C:/runs/experiment', '\\\\server\\share\\experiment', 'relative/run'):
+        with pytest.raises(ValueError, match='绝对路径'):
+            import_history(store, {'kind': 'remote', 'path': path}, tmp_path / 'cache', synchronize=False)
+    with pytest.raises(ValueError, match='来源'):
+        import_history(store, {'kind': 'unexpected', 'path': '/srv/runs/a'}, tmp_path / 'cache', synchronize=False)
+
+
+@pytest.mark.parametrize('name,expected', [
+    ('result<1>?*"|', 'result_1_____'), ('trial. ', 'trial'),
+    ('CON', '_CON'), ('aux.json', '_aux.json'), ('LPT9', '_LPT9'),
+    ('comparison', 'comparison'),
+])
+def test_export_names_are_portable_across_windows_and_posix(name, expected):
+    from ai_exp_app.history.paths import export_basename
+    assert export_basename(name, 'identity', set()) == expected
+    assert export_basename(name, 'identity', {expected}) != expected
+
+
+@pytest.mark.parametrize('source_path', [r'C:\runs\example', r'\\server\share\example'])
+def test_windows_drive_and_unc_validation_without_windows_filesystem(tmp_path, monkeypatch, source_path):
+    from pathlib import PureWindowsPath
+    import ai_exp_app.history.importer as importer
+
+    class WindowsSource(PureWindowsPath):
+        def expanduser(self):
+            return self
+
+        def resolve(self):
+            return self
+
+    # Only the source uses Windows syntax; caches and SQLite remain real temporary files.
+    native_path = importer.Path
+    monkeypatch.setattr(importer, 'Path', lambda value:
+                        WindowsSource(value) if str(value) == source_path else native_path(value))
+    store = Store(tmp_path / 'state.sqlite3')
+    record = importer.import_history(store, {'kind': 'local', 'path': source_path},
+                                     tmp_path / 'cache', synchronize=False)
+    assert record['source']['path'] == source_path
+    assert record['name'] == 'example'

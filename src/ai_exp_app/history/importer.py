@@ -2,7 +2,7 @@ import json
 import uuid
 import math
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .paths import export_basename
 from .sync import sync_history, run_lock
@@ -46,8 +46,11 @@ def enrich(record):
 def import_history(store, source, cache_root, name=None, run_id=None, synchronize=True, visibility='visible'):
     source = dict(source)
     source['kind'] = source.get('kind', source.get('source', 'local'))
+    if source['kind'] not in {'local', 'remote'}:
+        raise ValueError('实验来源必须为 local 或 remote')
     source['path'] = str(Path(source['path']).expanduser().resolve()) if source['kind'] == 'local' else source['path'].rstrip('/')
-    if not source['path'].startswith('/'):
+    source_path = Path(source['path']) if source['kind'] == 'local' else PurePosixPath(source['path'])
+    if not source_path.is_absolute() or '\0' in source['path']:
         raise ValueError('实验目录必须为绝对路径')
     source['ssh_alias'] = source.get('ssh_alias', source.get('alias', 'gpu'))
     source_key = json.dumps(source, sort_keys=True)
@@ -61,7 +64,7 @@ def import_history(store, source, cache_root, name=None, run_id=None, synchroniz
                 existing.update(sync_failures=0, next_retry_at=0)
             return store.put('history', existing['id'], enrich(existing))
     identity = run_id or str(uuid.uuid4())
-    name = name or Path(source['path']).name
+    name = name or source_path.name
     cache_root = Path(cache_root).resolve()
     cache_root.mkdir(parents=True, exist_ok=True)
     directory = export_basename(name, identity, {p.name for p in cache_root.iterdir()})
