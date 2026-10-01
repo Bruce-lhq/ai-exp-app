@@ -79,7 +79,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"app": "ai-exp-app", "version": "0.3.0", "instance_id": app.state.instance_id}
+        return {"app": "ai-exp-app", "version": "0.4.0", "instance_id": app.state.instance_id}
 
     @app.post("/api/local/browse")
     def local_browse(body: dict):
@@ -115,7 +115,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.post("/api/native-picker")
     def picker_create(body: dict):
         if not picker_available()["available"]:
-            raise HTTPException(409, "请先打开 Mac 实验工作台应用")
+            raise HTTPException(409, "请先打开实验工作台桌面应用")
         with store.lock:
             now = time.time()
             for old in picker_requests.values():

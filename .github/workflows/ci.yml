@@ -14,8 +14,31 @@ concurrency:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: Local backend (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Ubuntu 24.04 x64
+            os: ubuntu-24.04
+            python: .venv/bin/python
+          - target: Windows Server 2025 x64
+            os: windows-2025
+            python: .venv/Scripts/python.exe
+          - target: macOS Apple Silicon
+            os: macos-15
+            python: .venv/bin/python
+          - target: macOS Intel
+            os: macos-15-intel
+            python: .venv/bin/python
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -25,12 +48,12 @@ jobs:
       - name: Install locked dependencies
         run: |
           uv venv --python 3.12
-          uv pip sync --python .venv/bin/python requirements.lock
-          uv pip install --python .venv/bin/python --no-deps -e .
+          uv pip sync --python "${{ matrix.python }}" requirements.lock
+          uv pip install --python "${{ matrix.python }}" --no-deps -e .
       - name: Run pytest
-        run: .venv/bin/python -m pytest -q
+        run: '"${{ matrix.python }}" -m pytest -q'
       - name: Build remote agent without connecting to SSH
-        run: .venv/bin/python scripts/install_remote.py --build-only
+        run: '"${{ matrix.python }}" scripts/install_remote.py --build-only'
 
   frontend:
     runs-on: ubuntu-latest

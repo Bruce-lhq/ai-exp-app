@@ -155,7 +155,7 @@ def sync_history(record, cache_root):
         migrated = {}
         if record.get('parameter_overrides') and 'args.json' in copied:
             from .importer import parameter_fields
-            parameters = json.loads((target / 'args.json').read_text())
+            parameters = json.loads((target / 'args.json').read_text(encoding='utf-8'))
             fields = parameter_fields(parameters) if isinstance(parameters, dict) else set()
             annotations = {**record.get('parameter_annotations', {}),
                            **{key: value.strip() for key, value in record['parameter_overrides'].items()

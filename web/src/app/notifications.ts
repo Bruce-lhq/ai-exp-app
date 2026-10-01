@@ -1,4 +1,6 @@
 export async function enableSystemNotifications(): Promise<string> {
+  const desktop = (window as any).pywebview?.api;
+  if (desktop?.notification_settings) return await desktop.notification_settings();
   const native = (window as any).webkit?.messageHandlers?.notifications;
   if (native) {
     const result = await native.postMessage('enable');

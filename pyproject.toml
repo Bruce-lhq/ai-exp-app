@@ -4,18 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-exp-app"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local experiment workbench for SSH GPU training, cached charts and comparison tables"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
-dependencies = ["fastapi", "uvicorn", "pydantic"]
+dependencies = ["fastapi", "uvicorn", "pydantic", "matplotlib>=3.9"]
+
+[project.scripts]
+ai-experiment = "ai_exp_app.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "httpx"]
+desktop = ["pywebview>=6", "PySide6>=6.8; sys_platform == 'linux'", "qtpy>=2.4; sys_platform == 'linux'"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "remote"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "remote"]

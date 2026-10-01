@@ -1,5 +1,4 @@
 import contextlib
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -50,6 +49,7 @@ class Store:
 
     @contextlib.contextmanager
     def transaction(self):
+        import fcntl  # The remote state store runs on Linux; pure helpers remain importable elsewhere.
         with (self.root / 'state.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             path = self.root / 'state.json'

@@ -19,7 +19,7 @@ def parameter_fields(parameters):
 def enrich(record):
     root = Path(record['cache_dir'])
     try:
-        parameters = json.loads((root / 'args.json').read_text())
+        parameters = json.loads((root / 'args.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         parameters = {}
     def safe(value):
@@ -33,7 +33,7 @@ def enrich(record):
     record['original_parameters'] = parameters
     record['parameter_original_fields'] = sorted(parameter_fields(parameters))
     try:
-        imported = json.loads((root / 'parameter_annotations.json').read_text())
+        imported = json.loads((root / 'parameter_annotations.json').read_text(encoding='utf-8'))
     except (OSError, ValueError):
         imported = {}
     annotations = {**(imported if isinstance(imported, dict) else {}), **record.get('parameter_annotations', {})}

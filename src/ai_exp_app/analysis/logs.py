@@ -11,7 +11,7 @@ FACTORS = {'': 1, 'k': 1e3, 'm': 1e6, 'b': 1e9}
 def read_log_metrics(path, run_id=''):
     records = []
     if path.exists():
-        with path.open(errors='replace') as stream:
+        with path.open(encoding='utf-8', errors='replace') as stream:
             for index, line in enumerate(stream):
                 speed = SPEED.search(line)
                 if not speed:
