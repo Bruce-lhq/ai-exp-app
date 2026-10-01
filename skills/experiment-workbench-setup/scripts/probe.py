@@ -75,7 +75,7 @@ def probe_ssh(alias, project=None, python='python3'):
         'else: result["gpu"]={"available":None,"error":"No NVIDIA query; inspect vendor tools or configured inventory. This does not establish that GPUs are absent."}',
         'print(json.dumps(result))',
     ])
-    result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10', alias, shlex.quote(python) + ' -'], input=script, text=True, capture_output=True, timeout=35)
+    result = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10', alias, shlex.quote(python) + ' -'], input=script, text=True, encoding='utf-8', capture_output=True, timeout=35)
     if result.returncode:
         raise ValueError(result.stderr.strip() or 'SSH probe failed')
     return json.loads(result.stdout)
