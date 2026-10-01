@@ -4,7 +4,7 @@ Use the repository root for repository scripts, and the skill directory for its 
 
 ## Local service and settings
 
-Launch the installed Mac app, or follow the README's localhost installation/start commands. Check `http://127.0.0.1:8765/api/health` without triggering any cloud operation. If the user selected another port, use that port in every helper call.
+Launch the installed desktop app on the actual OS, or use `ai-experiment service start`, or follow the README's localhost installation/start commands. Check `http://127.0.0.1:8765/api/health` without triggering any cloud operation. If the user selected another port, use that port in every helper call.
 
 Read settings first:
 
@@ -27,7 +27,7 @@ Write only the missing/revised fields, preserving their existing workspace. Exam
 }
 ```
 
-`remote_data_root` is optional; fill it only if applicable. A program's data path belongs in its actual parameter/profile. Choose a dedicated runs directory, never `/`. `remote_python` is the Python interpreter for Python launchers, validators and inventory hooks; for R/Julia/compiled trainers put their actual executable in the profile command instead. the installer separately requires `python3` for its standard-library agent. Existing GPU setups may already have distinct environments; retain them.
+`remote_data_root` is optional; fill it only if applicable. A program's data path belongs in its actual parameter/profile. Choose a dedicated runs directory, never `/`. `remote_python` is the Python interpreter for Python launchers, validators and inventory hooks; for R/Julia/compiled trainers put their actual executable in the profile command instead. the installer uses the configured remote Python for its standard-library agent. Existing GPU setups may already have distinct environments; retain them.
 
 `remote_gpu_probe` optionally points to a user-owned absolute Python script for truthful nondefault device/allocation inventory. Its exact JSON contract and visibility mapping are in [cloud-environments.md](cloud-environments.md). Leaving it empty uses the default NVIDIA query; missing NVIDIA tooling is a prompt to inspect the actual environment, not a reason to install unrelated drivers.
 
@@ -35,16 +35,18 @@ Write only the missing/revised fields, preserving their existing workspace. Exam
 python3 scripts/api.py --method PUT --path /api/settings/local --json-file /path/to/settings-request.json
 ```
 
-This writes the app's runtime `config.local.json`. The source default is the checkout's `config.local.json`; the installed Mac app uses `~/Library/Application Support/AI Experiment/config.local.json`. Startup environment overrides may change it. Read the actual startup settings before using an installer; do not edit a guessed second file. Credentials and private keys do not belong in this JSON.
+This writes the app's runtime `config.local.json`. Ask `ai-experiment config show --json` for the actual path. New defaults are macOS `~/Library/Application Support/AI Experiment`, Windows `%LOCALAPPDATA%/AI Experiment`, Linux `$XDG_DATA_HOME/ai-exp-app` (or `~/.local/share/ai-exp-app`). Existing source workspaces and environment overrides may change it. Read the actual startup settings before using an installer; do not edit a guessed second file. Credentials and private keys do not belong in this JSON.
 
 ## Agent deployment
 
-Run the repository's installer using the same configuration file the local service just saved. With the source `.venv` available, execute from the workbench repository root:
+Use the same workspace settings the service just saved. The installed/portable CLI includes the agent:
 
 ```bash
-AI_EXP_CONFIG_FILE=/path/to/the/actual/config.local.json \
-  .venv/bin/python scripts/install_remote.py
+ai-experiment install-agent --read-only
+ai-experiment install-agent
 ```
+
+Both commands connect and deploy the agent. `--read-only` installs it in read-only mode for inspection; rerun without it to enable training/control operations. For source installations, use `.venv/bin/ai-experiment` on macOS/Linux, `.venv/Scripts/ai-experiment.exe` on Windows. If `AI_EXP_DATA_DIR` or `AI_EXP_CONFIG_FILE` selected a workspace, retain those values for deployment. Do not make a second guessed configuration file.
 
 This deploys a zipapp and remote configuration atomically into the dedicated workbench directory. It does not install training dependencies or copy datasets. Do not replace a shared existing agent blindly; inspect which workspace uses it. Separate workspaces should use separate remote roots. If installation fails, show the specific SSH/Python/path error and preserve existing training state.
 

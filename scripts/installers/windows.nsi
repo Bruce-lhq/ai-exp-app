@@ -19,6 +19,16 @@ RequestExecutionLevel user
 
 Section "AI Experiment" Main
   SetShellVarContext current
+  IfFileExists "$INSTDIR\ai-experiment.exe" 0 prepare_done
+  MessageBox MB_YESNO|MB_ICONEXCLAMATION "Updating will close the desktop window and stop this workspace's local service. Finish any CLI commands first. Remote training and experiment data will be preserved. Continue?" /SD IDYES IDYES prepare_service
+  Abort
+  prepare_service:
+  ExecWait '"$INSTDIR\ai-experiment.exe" --prepare-install' $0
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "The desktop or local service could not be safely closed. Close the application, finish CLI commands, then run ai-experiment service stop --yes and try again. No processes were killed."
+    Abort
+  ${EndIf}
+  prepare_done:
   InitPluginsDir
   File /oname=$PLUGINSDIR\WebView2Setup.exe "${BOOTSTRAP}"
   ExecWait '"$PLUGINSDIR\WebView2Setup.exe" /silent /install' $0
@@ -44,15 +54,28 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext current
+  MessageBox MB_YESNO|MB_ICONEXCLAMATION "Uninstalling will close the desktop window and stop this workspace's local service. Finish any CLI commands first. Remote training and cached experiments will be preserved. Continue?" /SD IDYES IDYES un_prepare
+  Abort
+  un_prepare:
+  ExecWait '"$INSTDIR\ai-experiment.exe" --prepare-install' $0
+  ${If} $0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "The application is still in use. Close desktop and CLI windows, run ai-experiment service stop --yes, then retry. No application files have been removed."
+    Abort
+  ${EndIf}
+  ClearErrors
+  RMDir /r "$INSTDIR\_internal"
+  ${If} ${Errors}
+    MessageBox MB_OK|MB_ICONSTOP "Some application files are still locked. Finish any CLI commands and run the uninstaller again. Experiment data has been preserved."
+    Abort
+  ${EndIf}
   Delete "$DESKTOP\AI Experiment.lnk"
   Delete "$SMPROGRAMS\AI Experiment\AI Experiment.lnk"
   RMDir "$SMPROGRAMS\AI Experiment"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AI Experiment"
-  RMDir /r "$INSTDIR\_internal"
   Delete "$INSTDIR\ai-experiment.exe"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.txt"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
-  ; The service and all experiment data under LOCALAPPDATA\AI Experiment are retained.
+  ; Shared experiment data under LOCALAPPDATA\AI Experiment is retained.
 SectionEnd

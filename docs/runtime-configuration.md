@@ -4,8 +4,10 @@
 
 ## 配置文件位置
 
-- 开发版：仓库根目录 `config.local.json`。
-- Mac 安装版：`~/Library/Application Support/AI Experiment/config.local.json`。
+- macOS：`~/Library/Application Support/AI Experiment/config.local.json`。
+- Windows：`%LOCALAPPDATA%\AI Experiment\config.local.json`。
+- Linux：`$XDG_DATA_HOME/ai-exp-app/config.local.json`，未设置时为 `~/.local/share/ai-exp-app/config.local.json`。
+- 既有源码工作空间：保留仓库根目录 `config.local.json` 和 `.local/`，不会自动迁移。
 - 自定义数据目录：`<APP_DATA_DIR>/config.local.json`。
 - 指定其他配置文件：设置 `AI_EXP_CONFIG_FILE`。
 
@@ -38,7 +40,7 @@
 
 ## 远端安装
 
-本地配置完成后运行 `scripts/install_remote.py`。安装器使用配置中的 SSH 别名与远端根目录，把中性 agent 和独立的 `config.local.json` 安装到远端。远端配置文件位于 `<REMOTE_APP_ROOT>/config.local.json`，不会藏在 zipapp 里面。远端状态目录沿用配置值，升级不会迁移实验或重建调度状态。
+本地配置完成后运行 `ai-experiment install-agent`（源码版使用虚拟环境内同名命令）。安装器使用配置中的 SSH 别名与远端根目录，把中性 agent 和独立的 `config.local.json` 安装到远端。远端配置文件位于 `<REMOTE_APP_ROOT>/config.local.json`，不会藏在 zipapp 里面。远端状态目录沿用配置值，升级不会迁移实验或重建调度状态。
 
 ## 本地环境变量
 
@@ -50,7 +52,9 @@
 | `AI_EXP_WEB_ROOT` | 构建后的前端目录 |
 | `AI_EXP_PORT` | localhost 服务端口，默认 `8765` |
 
-源码版按 README 显式指定工作空间与配置文件，避免与已安装 Mac 应用的数据混用。未指定数据目录时，若本机存在 Mac 应用数据库则复用该工作空间，否则使用源码的 `.local/`。
+新工作空间默认使用系统应用数据目录。已存在系统应用配置或数据库时复用它；否则保留既有源码 `.local/` 工作空间；两者都不存在才使用新的系统默认目录。桌面、CLI 和网页共用同一规则。开发或测试应显式指定独立工作空间，避免与日常数据混用。
+
+Mac／Linux 示例：`export AI_EXP_DATA_DIR="$PWD/.local"` 和 `export AI_EXP_CONFIG_FILE="$PWD/config.local.json"`。Windows PowerShell 使用 `$env:AI_EXP_DATA_DIR="$PWD/.local"` 和 `$env:AI_EXP_CONFIG_FILE="$PWD/config.local.json"`。变量只影响当前终端及其启动的进程。
 
 运行中的实验持有提交时的代码、Python、数据和产物目录；修改应用设置用于后续操作，不会修改正在执行的训练配置。项目自己的配置可覆盖全局 Python、数据与实验根目录。
 

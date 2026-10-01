@@ -97,6 +97,14 @@ jobs:
         env:
           QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
         run: 'xvfb-run -a "${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --desktop --report "dist/verification/${{ matrix.target }}-native.json"'
+      - name: Install and exercise the Ubuntu desktop package
+        if: runner.os == 'Linux'
+        env:
+          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
+        run: |
+          sudo apt-get install -y ./dist/releases/AI-Experiment-Ubuntu-amd64.deb
+          xvfb-run -a "${{ matrix.python }}" scripts/smoke_platform.py --executable /usr/bin/ai-experiment --desktop --report "dist/verification/${{ matrix.target }}-installed.json"
+          sudo apt-get remove -y ai-experiment
       - name: Install official Windows WebView2 runtime
         if: runner.os == 'Windows'
         shell: pwsh
@@ -106,6 +114,10 @@ jobs:
       - name: Exercise Windows Edge native renderer (Server, not Windows 11 human acceptance)
         if: runner.os == 'Windows'
         run: '"${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --desktop --report "dist/verification/${{ matrix.target }}-native.json"'
+      - name: Exercise actual Windows NSIS install, upgrade and uninstall
+        if: runner.os == 'Windows' && !cancelled()
+        timeout-minutes: 15
+        run: '"${{ matrix.python }}" scripts/smoke_windows_installer.py --installer "dist/releases/AI-Experiment-Windows-x64-Setup.exe" --report "dist/verification/${{ matrix.target }}-installer.json"'
       - name: Exercise macOS WebKit native renderer
         if: runner.os == 'macOS'
         run: '"${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --mac-app "dist/AI Experiment.app/Contents/MacOS/AIExperiment" --report "dist/verification/${{ matrix.target }}-native.json"'

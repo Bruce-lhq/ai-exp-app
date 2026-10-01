@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from ai_exp_app import __version__
 from ai_exp_app.config import Config
 from ai_exp_app.db import Store
 from ai_exp_app.security import LocalSessionMiddleware
@@ -79,7 +80,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        return {"app": "ai-exp-app", "version": "0.4.0", "instance_id": app.state.instance_id}
+        return {"app": "ai-exp-app", "version": __version__, "instance_id": app.state.instance_id}
 
     @app.post("/api/local/browse")
     def local_browse(body: dict):

@@ -5,6 +5,7 @@ import tempfile
 import threading
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 ALLOWED_FILES = {'args.json', 'model_config.json', 'metrics.jsonl', 'train.log', 'launch.log',
@@ -57,8 +58,12 @@ def rpc(alias, operation, payload):
 def download_checkpoint(source, entry, target):
     """One SSH stream, with an atomic local replacement; never buffer a GB in RAM."""
     from ai_exp_app.transport.ssh import build_ssh_argv, DEFAULT_AGENT
+    from ai_exp_app.config import local_settings
+    settings = local_settings()
     wrapper = Path.home() / '.local/bin/ssh'
-    argv = build_ssh_argv(str(wrapper) if wrapper.exists() else 'ssh', source.get('ssh_alias', 'gpu'), DEFAULT_AGENT)
+    argv = build_ssh_argv(str(wrapper) if wrapper.is_file() and sys.platform != 'win32' else 'ssh',
+                          source.get('ssh_alias', 'gpu'), settings.get('remote_agent', DEFAULT_AGENT),
+                          python=settings['remote_python'])
     script = "\n".join([
         'from pathlib import Path', 'import sys, shutil',
         'p=Path(' + repr(source['path']) + ')/"latest.pt"',
@@ -68,7 +73,7 @@ def download_checkpoint(source, entry, target):
         'with p.open("rb") as f: shutil.copyfileobj(f,sys.stdout.buffer,1024*1024)',
         's2=p.stat()', 'assert (s.st_ino,s.st_size,s.st_mtime_ns)==(s2.st_ino,s2.st_size,s2.st_mtime_ns)',
     ])
-    argv[-1] = 'python3 -c ' + shlex.quote(script)
+    argv[-1] = shlex.quote(settings['remote_python']) + ' -c ' + shlex.quote(script)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.checkpoint-', dir=target.parent)
     try:

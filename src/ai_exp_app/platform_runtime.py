@@ -6,6 +6,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from ai_exp_app import __version__
 from ai_exp_app.config import Config
 
 # Local control must never travel through a machine-wide HTTP proxy.
@@ -44,14 +45,31 @@ def service_status(config=None):
         raise RuntimeError('此端口的工作台属于其他工作空间') from exc
     if identity.get('instance_id') != value['instance_id'] or identity.get('url') != url:
         raise RuntimeError('此端口的工作台属于其他工作空间')
+    return {**identity, 'version': value.get('version')}
+
+
+def _current_service(identity):
+    if identity.get('version') != __version__:
+        raise RuntimeError(f"已有工作台服务版本为 {identity.get('version') or '未知'}，当前客户端为 {__version__}；"
+                           '请运行 ai-experiment service stop --yes 后重新启动（不会停止远端训练）')
     return identity
 
 
-def start_service(config=None, command=None, timeout=15):
+def _stop_started_process(process):
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+
+def start_service(config=None, command=None, timeout=60):
     config = config or Config.load()
     identity = service_status(config)
     if identity:
-        return identity
+        return _current_service(identity)
     env = dict(os.environ, AI_EXP_DATA_DIR=str(config.data_dir), AI_EXP_CACHE_ROOT=str(config.cache_root),
                AI_EXP_CONFIG_FILE=str(config.config_file), AI_EXP_WEB_ROOT=str(config.web_root), AI_EXP_PORT=str(config.port))
     if command is None:
@@ -61,21 +79,18 @@ def start_service(config=None, command=None, timeout=15):
         process = subprocess.Popen(command, env=env,
                                    stdin=subprocess.DEVNULL, stdout=log, stderr=log, **options)
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        identity = service_status(config)
-        if identity:
-            return identity
-        if process.poll() not in (None, 0):
-            raise RuntimeError('本地服务启动失败，请查看 ' + str(config.data_dir / 'service.log'))
-        time.sleep(.1)
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-    raise RuntimeError('本地服务启动超时，请查看 ' + str(config.data_dir / 'service.log'))
+    try:
+        while time.monotonic() < deadline:
+            identity = service_status(config)
+            if identity:
+                return _current_service(identity)
+            if process.poll() not in (None, 0):
+                raise RuntimeError('本地服务启动失败，请查看 ' + str(config.data_dir / 'service.log'))
+            time.sleep(.1)
+        raise RuntimeError('本地服务启动超时，请查看 ' + str(config.data_dir / 'service.log'))
+    except BaseException:
+        _stop_started_process(process)
+        raise
 
 
 def stop_service(config=None, timeout=10):
