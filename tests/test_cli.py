@@ -194,3 +194,18 @@ def test_cli_exports_png_offline_and_preserves_missing_metric_warning(local_serv
     raw = destination.read_bytes()
     assert raw[:8] == b'\x89PNG\r\n\x1a\n'
     assert struct.unpack('>II', raw[16:24]) == (640,440)
+
+
+def test_cli_redirected_unicode_input_and_output_are_utf8(local_service, tmp_path):
+    env,url=local_service
+    env={**env,'PYTHONIOENCODING':'cp1252'}
+    body=json.dumps({'local_import_root':'C:/用户/实验/'},ensure_ascii=False).encode('utf-8')
+    prefix=[sys.executable,'-m','ai_exp_app.cli','--url',url]
+    result=subprocess.run([*prefix,'config','set','--file','-','--json'],input=body,
+                          env=env,cwd=ROOT,capture_output=True,timeout=60)
+    assert result.returncode==0,result.stderr
+    assert json.loads(result.stdout)['local_settings']['local_import_root']=='C:/用户/实验/'
+    result=subprocess.run([*prefix,'config','show','--json'],env=env,cwd=ROOT,
+                          capture_output=True,timeout=60)
+    assert result.returncode==0,result.stderr
+    assert json.loads(result.stdout)['local_settings']['local_import_root']=='C:/用户/实验/'
