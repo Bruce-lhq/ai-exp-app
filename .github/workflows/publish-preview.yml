@@ -1,0 +1,116 @@
+name: Publish verified preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to publish (for example v0.4.0)
+        required: true
+        type: string
+      build_run_id:
+        description: Successful Platform packages run for the exact tagged commit
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: preview-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - name: Verify source, CI and package provenance
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          tag, run_id = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN_ID']
+          if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or not run_id.isdecimal():
+              raise SystemExit('Invalid tag or run ID')
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', 'repos/'+os.environ['GH_REPO']+path]))
+          commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          run = api('/actions/runs/'+run_id)
+          if run['name'] != 'Platform packages' or run['conclusion'] != 'success' or run['head_sha'] != commit:
+              raise SystemExit('Packages must pass for the exact tagged commit')
+          runs = api('/actions/runs?head_sha='+commit)['workflow_runs']
+          if not any(value['name']=='CI' and value['conclusion']=='success' for value in runs):
+              raise SystemExit('Ordinary CI has not passed for this commit')
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run_id }}
+          pattern: packages-*
+          path: .local/release-artifacts
+      - name: Prepare checksums and verification evidence
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess, zipfile
+          root = pathlib.Path('.local/release-artifacts')
+          output = pathlib.Path('.local/publish'); output.mkdir(parents=True)
+          names = {
+              'macos-arm64': ['AI-Experiment-macOS-arm64.dmg','AI-Experiment-CLI-macOS-arm64.tar.gz'],
+              'macos-x86_64': ['AI-Experiment-macOS-x86_64.dmg','AI-Experiment-CLI-macOS-x86_64.tar.gz'],
+              'windows-x64': ['AI-Experiment-Windows-x64-Setup.exe','AI-Experiment-CLI-Windows-x64.zip'],
+              'ubuntu-amd64': ['AI-Experiment-Ubuntu-amd64.deb','AI-Experiment-CLI-Linux-amd64.tar.gz'],
+          }
+          with zipfile.ZipFile(output/'verification.zip','w',zipfile.ZIP_DEFLATED) as evidence:
+              for target, packages in names.items():
+                  folder = root/('packages-'+target)
+                  for suffix in ('cli','native'):
+                      path = folder/'verification'/(target+'-'+suffix+'.json')
+                      value = json.loads(path.read_text())
+                      if not value.get('packaged_cli') or value.get('error'):
+                          raise SystemExit('Failed packaged verification: '+target+'-'+suffix)
+                      if suffix=='native' and not isinstance(value.get('native_window'),dict):
+                          raise SystemExit('Missing real native renderer evidence: '+target)
+                  if target=='windows-x64':
+                      value=json.loads((folder/'verification'/('windows-x64-installer.json')).read_text())
+                      if value.get('ok') is not True:
+                          raise SystemExit('Windows installer lifecycle did not pass')
+                  if target=='ubuntu-amd64':
+                      value=json.loads((folder/'verification'/('ubuntu-amd64-installed.json')).read_text())
+                      if not value.get('packaged_cli') or not isinstance(value.get('native_window'),dict):
+                          raise SystemExit('Installed Ubuntu package did not pass')
+                  for name in packages:
+                      shutil.copyfile(folder/'releases'/name,output/name)
+                  for path in sorted((folder/'verification').glob('*.json')):
+                      evidence.write(path,target+'/'+path.name)
+          sums=[]
+          for path in sorted(output.iterdir()):
+              digest=hashlib.sha256()
+              with path.open('rb') as stream:
+                  for chunk in iter(lambda:stream.read(1024*1024),b''):digest.update(chunk)
+              sums.append(digest.hexdigest()+'  '+path.name+'\n')
+          (output/'SHA256SUMS.txt').write_text(''.join(sums))
+          tag=os.environ['RELEASE_TAG']
+          (output/'release-notes.md').write_text(f'''Cross-platform preview: {tag}
+
+          Desktop installers and standalone CLI for macOS Apple Silicon / Intel, Windows x64 and Ubuntu 24.04 x64. Browser, desktop and CLI share a private workspace and cached analysis.
+
+          Target-system CI passed packaged service, local history, Markdown, offline PNG and real native renderer checks. Windows also passed actual install/upgrade/uninstall with cache preservation; Ubuntu passed installed deb rendering. Evidence is in verification.zip; verify downloads with SHA256SUMS.txt.
+
+          Windows CI runs on Windows Server, not a human-tested Windows 11 desktop. Linux UI runs under Xvfb; real-desktop notifications, file dialogs and display scaling still need human acceptance. macOS CI uses macOS 15; older supported OS versions still need verification. macOS is ad-hoc signed without Developer ID notarization; Windows installer is unsigned. WebView2 installation requires internet access.
+
+          Setup: follow the README and its short Agent prompt. Remote execution requires Linux with Python 3.8+ and a project integration profile. No personal workspace configuration or experiments are included.
+          ''')
+          PY
+      - name: Publish preview release
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --prerelease --title "$RELEASE_TAG · Cross-platform preview" --notes-file .local/publish/release-notes.md
+          gh release upload "$RELEASE_TAG" .local/publish/*.dmg .local/publish/*.exe .local/publish/*.deb .local/publish/*.tar.gz .local/publish/*.zip .local/publish/SHA256SUMS.txt

@@ -179,3 +179,64 @@ def test_failed_start_only_cleans_up_its_owned_child(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match='启动超时'):
         start_service(config, command=[sys.executable, '-c', 'import time; time.sleep(60)'], timeout=.2)
     assert len(children) == 1 and children[0].poll() is not None
+
+
+def test_shutdown_socket_disconnect_waits_for_private_identity_cleanup(tmp_path):
+    import time
+    from ai_exp_app import __version__
+    state = {'stopping': False}
+    identity_file = tmp_path / 'service.json'
+    cleanup_finished = threading.Event()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if state['stopping']:
+                self.connection.shutdown(socket.SHUT_RDWR)
+                self.connection.close()
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps({'app': 'ai-exp-app', 'instance_id': 'owned', 'version': __version__}).encode())
+
+        def do_POST(self):
+            assert self.headers['X-Desktop-Token'] == 'private-test-token'
+            state['stopping'] = True
+            # Deliberately drop the shutdown response and all subsequent health connections.
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.connection.close()
+
+            def cleanup():
+                time.sleep(.25)
+                identity_file.unlink()
+                cleanup_finished.set()
+
+            threading.Thread(target=cleanup, daemon=True).start()
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    config = Config(tmp_path, tmp_path / 'cache', port=server.server_port)
+    identity_file.write_text(json.dumps({'url': f'http://127.0.0.1:{server.server_port}', 'instance_id': 'owned'}))
+    (tmp_path / 'desktop-token').write_text('private-test-token')
+    try:
+        started = time.monotonic()
+        assert stop_service(config, timeout=2)
+        assert cleanup_finished.is_set() and time.monotonic() - started >= .25
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize('exception', [ConnectionAbortedError(10053, 'aborted'), ConnectionResetError('reset')])
+def test_health_handles_direct_windows_connection_errors(monkeypatch, exception):
+    from ai_exp_app import platform_runtime
+
+    def aborted(*args, **kwargs):
+        raise exception
+
+    monkeypatch.setattr(platform_runtime.LOCAL_HTTP, 'open', aborted)
+    assert platform_runtime.health('http://127.0.0.1:8765') is None

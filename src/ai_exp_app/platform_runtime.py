@@ -25,6 +25,9 @@ def health(url):
         if isinstance(exc, urllib.error.HTTPError):
             raise RuntimeError('端口由其他应用占用') from exc
         return None
+    except (ConnectionAbortedError, ConnectionResetError):
+        # Windows can abort an accepted socket while the owned server is shutting down.
+        return None
     except (ValueError, TimeoutError) as exc:
         raise RuntimeError('端口由其他应用占用或服务未响应') from exc
     if not is_our_service(value):
@@ -101,9 +104,14 @@ def stop_service(config=None, timeout=10):
     token = (config.data_dir / 'desktop-token').read_text(encoding='utf-8').strip()
     request = urllib.request.Request(identity['url'] + '/api/desktop/shutdown', data=b'{}', method='POST',
                                      headers={'X-Desktop-Token': token, 'Content-Type': 'application/json'})
-    with LOCAL_HTTP.open(request, timeout=2) as response:
-        if not json.load(response).get('ok'):
-            raise RuntimeError('当前服务不支持安全退出')
+    try:
+        with LOCAL_HTTP.open(request, timeout=2) as response:
+            if not json.load(response).get('ok'):
+                raise RuntimeError('当前服务不支持安全退出')
+    except (ConnectionAbortedError, ConnectionResetError):
+        # A verified server may exit before delivering its shutdown acknowledgement.
+        # Still require its workspace identity file to disappear below.
+        pass
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if service_status(config) is None and not (config.data_dir / 'service.json').exists():
