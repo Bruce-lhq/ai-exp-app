@@ -1,6 +1,6 @@
 # 发布说明
 
-Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校验值通过 GitHub Releases 分发。工作空间数据库、缓存、checkpoint、`config.local.json`、内部设计与构建产物均不提交。当前版本为 `0.4.0`，预览版。
+Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校验值通过 GitHub Releases 分发。工作空间数据库、缓存、checkpoint、`config.local.json`、内部设计与构建产物均不提交。当前版本为 `0.4.1`，预览版。
 
 ## 构建与自动验证
 

@@ -14,7 +14,7 @@ import urllib.request
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='0.4.0'
+VERSION='0.4.1'
 
 
 def write_licenses(resources):

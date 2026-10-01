@@ -298,6 +298,10 @@ def dispatch(args):
 
 
 def main(argv=None):
+    # Redirected Windows streams otherwise inherit an ANSI code page.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8')
     args = parser().parse_args(argv)
     try:
         if args.group == 'service' and args.action == 'run':
