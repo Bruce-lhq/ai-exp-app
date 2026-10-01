@@ -2,6 +2,8 @@
 
 Read this only when access or code transfer is missing.
 
+Identify the local OS before choosing commands. On Windows, check `Get-Command ssh, ssh-keygen, scp` in PowerShell. If OpenSSH Client is missing, explain the Windows Optional Features installation and any administrator requirement; do not install a random SSH replacement. Use `$HOME/.ssh/config`, Windows ACLs and the existing SSH agent. On macOS/Linux use native SSH and file permissions. The workbench uses the same client and verified host keys as the user's terminal.
+
 ## SSH
 
 1. Obtain the provider's connection details from the user or its visible console: host/address, username, port, optional jump host, and its prescribed authentication method. Ask for the provider name only when needed to find its official connection/setup documentation. Do not guess a root username, a port, or a public hostname.
@@ -22,12 +24,16 @@ Host my-training-gpu
 
 The provider may require `ProxyJump`, a different key type or password login; follow its instructions rather than imposing this example. Ensure `.ssh` is private and key/config files have appropriate permissions.
 
+For Windows OpenSSH, omit `ControlMaster`, `ControlPersist` and `ControlPath`; Unix connection multiplexing is optional and not required for correctness. Do not send a Windows user through Unix `chmod` instructions.
+
 4. Verify the host-key fingerprint against the provider's console/documentation or another trusted source. The user's first interactive connection may need to accept that verified key and unlock a key/passphrase. Never disable host-key checks, automatically approve an unverified fingerprint, or replace a changed known-host entry without understanding why it changed.
 5. Run the read-only probe:
 
 ```bash
 python3 scripts/probe.py ssh --alias my-training-gpu
 ```
+
+Use the actual local Python 3.12 interpreter for helpers. A source virtual environment is `.venv/bin/python` on macOS/Linux and `.venv/Scripts/python.exe` on Windows; a standalone CLI does not make a system `python3` command available. Retain the same workspace environment variables for service and deployment.
 
 If `BatchMode` fails but interactive SSH succeeds, the app needs a usable SSH agent or provider-supported key authentication. Explain the authentication step; do not create password automation. `Connection refused` is a host/port/listening problem; `Permission denied` is authentication; a missing `python3` is a remote prerequisite. Resolve one evidenced failure at a time.
 
@@ -52,6 +58,8 @@ rsync -an --exclude .git --exclude .env --exclude .venv --exclude venv \
 ```
 
 After checking the file list and creating that dedicated destination, repeat with `-a` to transfer. Do not use `--delete`. Paths with spaces require argument-safe quoting. For a Git repository already accessible from the GPU, an SSH clone is also suitable; do not copy the user's private GitHub key to the server. Non-Git directories can be selected as a working tree.
+
+Windows does not normally include rsync. Prefer an existing Git repository accessible from the GPU, or assemble a temporary staging directory containing only a reviewed file allowlist and transfer that directory with system `scp`. Preview the staged files first, apply the same exclusions, and quote local paths with spaces. Do not recursively upload the original source directory simply to work around a missing rsync command. Installing WSL is not a prerequisite for the Windows workbench.
 
 Locate data separately. Reuse existing data; ask before downloading large datasets, creating resources or running paid preparation. Keep dataset credentials out of the profile and workbench settings.
 

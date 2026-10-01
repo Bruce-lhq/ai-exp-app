@@ -7,6 +7,9 @@ on:
     tags: ['v*']
     paths:
       - 'src/**'
+      - 'remote/**'
+      - 'skills/experiment-workbench-setup/**'
+      - 'LICENSE'
       - 'scripts/**'
       - 'macos/**'
       - 'web/**'
