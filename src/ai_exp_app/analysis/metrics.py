@@ -30,7 +30,7 @@ def read_metrics(path, run_id='', attempts=None):
         return {'records': [], 'warnings': ['缺少 metrics.jsonl'], 'metadata': {}, 'parameter_count': None}
     current_attempt = None
     boundaries = {a['source_index']: a['id'] for a in attempts or [] if isinstance(a.get('source_index'), int)}
-    with path.open(errors='replace') as stream:
+    with path.open(encoding='utf-8', errors='replace') as stream:
         for index, line in enumerate(stream):
             if index in boundaries:
                 current_attempt = boundaries[index]

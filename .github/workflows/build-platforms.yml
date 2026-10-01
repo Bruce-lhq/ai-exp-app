@@ -1,0 +1,131 @@
+name: Platform packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'macos/**'
+      - 'web/**'
+      - 'pyproject.toml'
+      - 'requirements*.lock'
+      - '.github/workflows/build-platforms.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build and smoke (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ubuntu-amd64
+            os: ubuntu-24.04
+            python: .venv/bin/python
+            executable: dist/frozen/ai-experiment/ai-experiment
+          - target: windows-x64
+            os: windows-2025
+            python: .venv/Scripts/python.exe
+            executable: dist/frozen/ai-experiment/ai-experiment.exe
+          - target: macos-arm64
+            os: macos-15
+            python: .venv/bin/python
+            executable: dist/frozen/ai-experiment/ai-experiment
+            arch: arm64
+          - target: macos-x86_64
+            os: macos-15-intel
+            python: .venv/bin/python
+            executable: dist/frozen/ai-experiment/ai-experiment
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install into an isolated build environment
+        run: |
+          uv venv --python 3.12
+          uv pip sync --python "${{ matrix.python }}" requirements-desktop.lock
+          uv pip install --python "${{ matrix.python }}" --no-deps -e .
+          uv pip install --python "${{ matrix.python }}" PyInstaller==6.22.3
+      - name: Build bundled web UI
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libegl1 libnss3 libnspr4 libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libx11-xcb1 libfontconfig1 libfreetype6 libasound2t64
+      - name: Install Windows installer compiler
+        if: runner.os == 'Windows'
+        run: choco install nsis --yes --no-progress
+      - name: Build macOS app, DMG and standalone CLI
+        if: runner.os == 'macOS'
+        run: '"${{ matrix.python }}" scripts/build_macos.py --arch ${{ matrix.arch }} --skip-web'
+      - name: Build Windows or Linux installer and standalone CLI
+        if: runner.os != 'macOS'
+        run: '"${{ matrix.python }}" scripts/build_desktop.py --skip-web'
+      - name: Exercise packaged CLI, service, history, tables and PNG
+        run: '"${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --report "dist/verification/${{ matrix.target }}-cli.json"'
+      - name: Exercise Linux Qt native renderer
+        if: runner.os == 'Linux'
+        env:
+          QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu
+        run: 'xvfb-run -a "${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --desktop --report "dist/verification/${{ matrix.target }}-native.json"'
+      - name: Install official Windows WebView2 runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath '.local/build-native/MicrosoftEdgeWebview2Setup.exe' -ArgumentList '/silent','/install' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "WebView2 installation failed: $($process.ExitCode)" }
+      - name: Exercise Windows Edge native renderer (Server, not Windows 11 human acceptance)
+        if: runner.os == 'Windows'
+        run: '"${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --desktop --report "dist/verification/${{ matrix.target }}-native.json"'
+      - name: Exercise macOS WebKit native renderer
+        if: runner.os == 'macOS'
+        run: '"${{ matrix.python }}" scripts/smoke_platform.py --executable "${{ matrix.executable }}" --mac-app "dist/AI Experiment.app/Contents/MacOS/AIExperiment" --report "dist/verification/${{ matrix.target }}-native.json"'
+      - name: Record checksums and verification boundary
+        run: '"${{ matrix.python }}" scripts/package_checksums.py'
+      - name: Upload installers, standalone CLI and verification evidence
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-${{ matrix.target }}
+          path: |
+            dist/releases/*
+            dist/verification/*
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload failed verification evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: failed-verification-${{ matrix.target }}
+          path: dist/verification/*
+          retention-days: 7
+          if-no-files-found: ignore

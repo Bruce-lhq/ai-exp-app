@@ -6,6 +6,7 @@ from collections import OrderedDict
 from ai_exp_app.projects.api import remote
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from .metrics import read_metrics
 from .logs import read_log_metrics
 from .tables import render_table
@@ -141,6 +142,20 @@ def create_router(store):
                            'name': record.get('display_name') or record.get('name') or identity,
                            'points': points})
         return {'series': result, 'warnings': warnings, 'metrics': sorted(available_metrics), 'axes': sorted(available_axes)}
+
+    @router.post('/api/analysis/plot/png')
+    def plot_png(body: dict):
+        from .plot import render_png
+        # Offline export always uses histories; it never refreshes live data.
+        data = series({**body, 'live_ids': []})
+        try:
+            content = render_png(data, body)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(422, {'error': str(exc), 'warnings': data['warnings']}) from exc
+        return Response(content, media_type='image/png', headers={
+            'Content-Disposition': 'attachment; filename="experiment.png"',
+            'X-Experiment-Warnings': json.dumps(data['warnings'], ensure_ascii=True),
+        })
 
     @router.get('/api/templates')
     @router.get('/api/analysis/templates')

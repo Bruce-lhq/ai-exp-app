@@ -16,7 +16,7 @@ def call(base, method, path, document=None):
     if not path.startswith('/api/') or '?' in path or '#' in path or '..' in path:
         raise ValueError('Use an absolute /api/ path without a query or fragment')
     origin = base.rstrip('/')
-    client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    client = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     with client.open(origin + '/', timeout=15) as response:
         response.read()
     headers = {'Origin': origin, 'Content-Type': 'application/json'}

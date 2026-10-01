@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -35,7 +36,8 @@ def test_local_settings_persist_without_bundled_machine_paths(tmp_path):
     loaded = Config.load(tmp_path)
     assert loaded.local_settings['remote_import_root'] == '/srv/experiments/runs/'
     assert loaded.local_settings['remote_python'] == 'python3'
-    assert loaded.config_file.stat().st_mode & 0o777 == 0o600
+    if os.name != 'nt':  # Windows chmod does not implement POSIX owner/group permission bits.
+        assert loaded.config_file.stat().st_mode & 0o777 == 0o600
     assert json.loads(config.config_file.read_text())['local_import_root'] == '~/Downloads/runs/'
 
 

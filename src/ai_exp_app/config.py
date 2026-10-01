@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import os
 import re
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DEFAULTS = {
@@ -31,7 +32,7 @@ class Config:
 
     @property
     def local_settings(self):
-        document = json.loads(self.config_file.read_text()) if self.config_file.exists() else {}
+        document = json.loads(self.config_file.read_text(encoding='utf-8')) if self.config_file.exists() else {}
         if not isinstance(document, dict):
             raise ValueError('config.local.json 必须为 JSON 对象')
         return {**LOCAL_DEFAULTS, **{key: document[key] for key in LOCAL_DEFAULTS if key in document}}
@@ -65,15 +66,21 @@ class Config:
                 raise ValueError(key + ' 必须为远端绝对目录')
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.config_file.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(document, ensure_ascii=False, indent=2) + '\n')
+        temporary.write_text(json.dumps(document, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         temporary.chmod(0o600)
         temporary.replace(self.config_file)
         return document
 
     @classmethod
     def load(cls, data_dir: Path | None = None):
-        installed = Path.home() / 'Library/Application Support/AI Experiment'
-        default = installed if (installed / 'app.sqlite3').exists() else ROOT / '.local'
+        installed = platform_data_dir()
+        legacy = ROOT / '.local'
+        if (installed / 'app.sqlite3').exists() or (installed / 'config.local.json').exists():
+            default = installed
+        elif (legacy / 'app.sqlite3').exists() or (ROOT / 'config.local.json').exists():
+            default = legacy
+        else:
+            default = installed
         directory = Path(data_dir or os.environ.get('AI_EXP_DATA_DIR', default)).expanduser().resolve()
         cache_default = ROOT / 'gpu_downloads' if directory == ROOT / '.local' else directory / 'gpu_downloads'
         config_default = ROOT / 'config.local.json' if directory == ROOT / '.local' else directory / 'config.local.json'
@@ -81,6 +88,14 @@ class Config:
         directory.mkdir(parents=True, exist_ok=True)
         cache = Path(os.environ.get('AI_EXP_CACHE_ROOT', cache_default)).expanduser().resolve()
         return cls(directory, cache, web_root=Path(os.environ.get('AI_EXP_WEB_ROOT', ROOT / 'web' / 'dist')).resolve(), port=int(os.environ.get('AI_EXP_PORT', '8765')), config_file=path)
+
+
+def platform_data_dir():
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library' / 'Application Support' / 'AI Experiment'
+    if sys.platform == 'win32':
+        return Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local') / 'AI Experiment'
+    return Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local' / 'share') / 'ai-exp-app'
 
 
 def local_settings(store=None):

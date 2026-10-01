@@ -3,11 +3,16 @@ import WebKit
 import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, WKUIDelegate, WKNavigationDelegate, WKDownloadDelegate, WKScriptMessageHandlerWithReply {
-    let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AI Experiment").path
+    let root = ProcessInfo.processInfo.environment["AI_EXP_DATA_DIR"] ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/AI Experiment").path
     var window: NSWindow?
     var webView: WKWebView?
     var downloads = Set<WKDownload>()
-    let origin = "http://127.0.0.1:8765"
+    let origin = "http://127.0.0.1:" + (ProcessInfo.processInfo.environment["AI_EXP_PORT"] ?? "8765")
+    let localSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = ["HTTPEnable": 0, "HTTPSEnable": 0]
+        return URLSession(configuration: config)
+    }()
     var timer: Timer?
     var opening = false
     var notified = Set<String>()
@@ -58,7 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
         let semaphore = DispatchSemaphore(value: 0)
         var result: Data?
-        URLSession.shared.dataTask(with: req) { data, response, _ in
+        localSession.dataTask(with: req) { data, response, _ in
             if (response as? HTTPURLResponse)?.statusCode == 200 { result = data }
             semaphore.signal()
         }.resume()
@@ -68,7 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func health() -> Bool {
         guard let data = request("/api/health"), let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
-        return value["app"] as? String == "ai-exp-app"
+        guard let identityData = FileManager.default.contents(atPath: root + "/service.json"),
+              let identity = try? JSONSerialization.jsonObject(with: identityData) as? [String: Any] else { return false }
+        return value["app"] as? String == "ai-exp-app" && value["instance_id"] as? String == identity["instance_id"] as? String && identity["url"] as? String == origin
     }
 
     @objc func openWorkspace() { open(path: "") }
@@ -84,8 +91,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         DispatchQueue.global().async {
             if !self.health() {
                 let p = Process()
-                p.executableURL = URL(fileURLWithPath: Bundle.main.resourcePath! + "/server/ai-exp-server")
-                p.arguments = []
+                p.executableURL = URL(fileURLWithPath: Bundle.main.resourcePath! + "/server/ai-experiment")
+                p.arguments = ["service", "run"]
                 var env = ProcessInfo.processInfo.environment
                 env["AI_EXP_DATA_DIR"] = self.root
                 env["AI_EXP_CACHE_ROOT"] = self.root + "/gpu_downloads"
@@ -135,6 +142,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             webView?.load(URLRequest(url: URL(string: address)!, cachePolicy: .reloadIgnoringLocalCacheData))
         }
         window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        verifyNativeSmoke()
+    }
+
+    func verifyNativeSmoke(attempt: Int = 0) {
+        guard let path = ProcessInfo.processInfo.environment["AI_EXP_NATIVE_SMOKE_PATH"], let view = webView else { return }
+        view.evaluateJavaScript("JSON.stringify({title:document.title,href:location.href,children:document.querySelector('#root')?.childElementCount||0})") { result, error in
+            let value = (result as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let ready = (value?["children"] as? Int ?? 0) > 0 && (value?["href"] as? String ?? "").hasPrefix(self.origin + "/")
+            if ready || attempt >= 100 {
+                var payload = value ?? [:]
+                payload["ok"] = ready; payload["renderer"] = "webkit"
+                if !ready { payload["error"] = error?.localizedDescription ?? "Native WebView did not render the application" }
+                if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
+                    try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+                }
+                NSApp.terminate(nil)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.verifyNativeSmoke(attempt: attempt + 1) }
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -199,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                                replyHandler: @escaping (Any?, String?) -> Void) {
         let source = message.frameInfo.securityOrigin
         guard message.frameInfo.isMainFrame, source.protocol == "http", source.host == "127.0.0.1",
-              source.port == 8765, message.body as? String == "enable" else {
+              source.port == URL(string: origin)?.port, message.body as? String == "enable" else {
             replyHandler(nil, "不允许的通知设置请求"); return
         }
         let center = UNUserNotificationCenter.current()
@@ -280,10 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     @objc func quit() {
         timer?.invalidate()
-        DispatchQueue.global().async {
-            _ = self.request("/api/desktop/shutdown", method: "POST")
-            DispatchQueue.main.async { NSApp.terminate(nil) }
-        }
+        NSApp.terminate(nil)
     }
 }
 
