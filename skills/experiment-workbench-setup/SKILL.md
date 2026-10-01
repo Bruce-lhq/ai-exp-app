@@ -17,11 +17,12 @@ Ask the smallest useful question at the first missing milestone:
 
 | Missing information | Ask for |
 | --- | --- |
+| Cloud GPU status unknown | Whether a GPU host has already been provisioned, and its provider or access method. If none exists, establish the intended environment before attempting SSH. |
 | No usable SSH alias | Cloud provider connection address, username and port; whether its key is already installed locally. Passwords belong in an interactive SSH prompt, never chat. |
 | Code location unknown | Local directory or existing remote absolute directory. |
 | Training entrypoint unclear | The command they currently use, or permission to inspect the entrypoint and project instructions. |
 | Required input/data unknown | Its existing location or the provider's documented preparation process. |
-| Existing experiments unknown | Directory containing one representative run, and whether the user wants it imported. |
+| Existing experiments unknown | Whether any runs already exist; if so, their directory and whether the user wants one imported. Do not assume a newcomer has a run to import. |
 | Potential paid/long-running preparation | Whether to perform that specific transfer, installation, or training test now. |
 
 Do not ask a newcomer about metrics and checkpoint internals before establishing SSH and locating their code. Do not send an experienced user through key setup or upload code already on the GPU.
@@ -60,8 +61,8 @@ Pass each applicable checkpoint before reporting it complete:
 3. Project inspection succeeds; schema defaults and argument flags match the source.
 4. An imported run shows the expected numeric samples and metric names. Missing metrics warn and remain missing, never zero-filled.
 5. Curves and tables render from cache after closing the SSH connection. Refresh happens in history management.
-6. If the user explicitly authorizes a training smoke test, use a separate tiny configuration and dedicated output; confirm queued → running → terminal, artifacts and caching. Never pause, adopt or delete their existing runs as a setup test.
+6. Before seeking authorization for a training smoke test, explain its tiny configuration, GPU count, expected duration or uncertainty, and dedicated output location. Reuse existing authorization when it covers this test. Once authorized, confirm queued → running → terminal, artifacts and caching. Never pause, adopt or delete their existing runs as a setup test.
 
-Stop at the first failed dependency, report its evidence and concrete next action, and continue independent work only where useful. Never claim a GPU test or strict-resume test was completed based on a profile validator alone.
+When a check fails, pause dependent steps, inspect the evidence, fix issues within the authorized setup scope, and rerun the failed check before proceeding. Do not repeat unchanged failures or skip a check and declare success. If progress requires missing user information, authorization, or an external change, explain the specific blocker and ask only for what is needed; continue useful independent work. Never claim a GPU test or strict-resume test was completed based on a profile validator alone.
 
 Finish with the SSH alias, code directory, profile location, workspace config location, imported run name, passed checks, and any remaining limitation. Offer a tiny training validation only if it has not already been authorized. Store these non-secret facts in an ignored `.local/setup-report.json` if working from a source checkout so a later Agent can continue without repeating questions.
