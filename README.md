@@ -9,7 +9,7 @@
 打开 Claude Code、Codex 或其他能操作终端的 AI Agent，把下面整段话复制给它：
 
 ```text
-请克隆 git@github.com:Bruce-lhq/ai-exp-app.git，读取并加载 skills/experiment-workbench-setup/SKILL.md，按其指引帮我完成 AI Experiment 的安装与接入。
+请克隆 https://github.com/Bruce-lhq/ai-exp-app.git，读取并加载 skills/experiment-workbench-setup/SKILL.md，按其指引帮我完成 AI Experiment 的安装与接入。
 ```
 
 你只需要提供 Agent 询问的连接信息和代码位置；密码、私钥不用发到聊天里。没有现成实验时，可在确认后运行一个极小的验收任务。使用哪家云 GPU、目录怎么组织、训练用什么框架，都由 Agent 根据实际项目检查并接入；它需要能够访问对应代码和云端环境。
@@ -49,7 +49,7 @@ Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`�
 本地要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm。macOS 已验收；Linux 可使用网页入口，完整平台验收尚未完成；Windows 原生入口暂未支持。
 
 ```bash
-git clone git@github.com:Bruce-lhq/ai-exp-app.git
+git clone https://github.com/Bruce-lhq/ai-exp-app.git
 cd ai-exp-app
 uv venv --python 3.12
 uv pip sync requirements.lock
