@@ -9,7 +9,7 @@
 打开 Claude Code、Codex 或其他能操作终端的 AI Agent，把下面整段话复制给它：
 
 ```text
-请读取 https://github.com/Bruce-lhq/ai-exp-app/blob/main/skills/experiment-workbench-setup/SKILL.md，并按它帮我安装和配置 AI Experiment。先检查已有信息，再询问缺失的代码位置、云 GPU、SSH 和已有实验情况，按我的实际情况逐步接入。请检查项目真实启动方式、指标和已有严格续跑功能，生成所需配置或适配脚本，完成连接、参数、历史、图表和缓存验收；需要试跑时先说明配置与资源。遇到失败按检查结果修复，不要跳过后宣称完成。
+请克隆 git@github.com:Bruce-lhq/ai-exp-app.git，读取并加载 skills/experiment-workbench-setup/SKILL.md，按其指引帮我完成 AI Experiment 的安装与接入。
 ```
 
 你只需要提供 Agent 询问的连接信息和代码位置；密码、私钥不用发到聊天里。没有现成实验时，可在确认后运行一个极小的验收任务。使用哪家云 GPU、目录怎么组织、训练用什么框架，都由 Agent 根据实际项目检查并接入；它需要能够访问对应代码和云端环境。
