@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import time
 
 from ai_exp_app.config import local_settings
@@ -16,25 +17,27 @@ class RemoteError(RuntimeError):
         self.code, self.message, self.details = code, message, details
 
 
-def build_ssh_argv(ssh_path, alias, agent_path):
+def build_ssh_argv(ssh_path, alias, agent_path, python='python3'):
     if not alias or alias.startswith('-') or any(c.isspace() for c in alias):
         raise ValueError('invalid SSH alias')
     # Keep the user's ~/.ssh/config connection reuse.  In particular, the
     # gpu alias uses ControlMaster auto + ControlPersist, so a terminal login
     # is reused by the workbench instead of opening a fresh password session.
     return [ssh_path, alias, '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=5',
-            '-o', 'ServerAliveCountMax=2', 'python3 ' + shlex.quote(agent_path) + ' rpc']
+            '-o', 'ServerAliveCountMax=2', shlex.quote(python) + ' ' + shlex.quote(agent_path) + ' rpc']
 
 
 def call_remote(alias, request, timeout_s=20):
     wrapper = Path.home() / '.local/bin/ssh'
-    argv = build_ssh_argv(str(wrapper) if wrapper.exists() else 'ssh', alias,
-                          os.environ.get('AI_EXP_REMOTE_AGENT', local_settings()['remote_agent']))
+    settings = local_settings()
+    argv = build_ssh_argv(str(wrapper) if wrapper.is_file() and sys.platform != 'win32' else 'ssh', alias,
+                          os.environ.get('AI_EXP_REMOTE_AGENT', settings['remote_agent']),
+                          python=settings['remote_python'])
     last_error = None
     for attempt in range(2):
         try:
-            response = subprocess.run(argv, input=json.dumps(request, allow_nan=False),
-                                      text=True, capture_output=True, timeout=timeout_s)
+            response = subprocess.run(argv, input=json.dumps(request, allow_nan=False, ensure_ascii=False),
+                                      text=True, encoding='utf-8', capture_output=True, timeout=timeout_s)
         except subprocess.TimeoutExpired as exc:
             last_error = RemoteError('SSH_TIMEOUT', '连接超时；提交结果可能未知，请使用原请求 ID 查询')
             if attempt == 0:

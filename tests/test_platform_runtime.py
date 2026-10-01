@@ -126,3 +126,56 @@ def test_foreign_port_is_never_stopped_or_replaced(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_existing_old_service_requires_restart_but_can_be_stopped(tmp_path, monkeypatch):
+    import os
+    import time
+    from ai_exp_app import __version__
+    monkeypatch.setenv('PYTHONPATH', str(Path(__file__).parents[1] / 'src'))
+    config = Config(tmp_path, tmp_path / 'cache', port=free_port(), config_file=tmp_path / 'config.local.json')
+    env = {**os.environ, 'AI_EXP_DATA_DIR': str(tmp_path), 'AI_EXP_PORT': str(config.port),
+           'AI_EXP_CONFIG_FILE': str(config.config_file)}
+    command = [sys.executable, '-c',
+               "import ai_exp_app.app as app; app.__version__='0.3.0'; "
+               'from ai_exp_app.desktop import main; main()']
+    with (tmp_path / 'old-service.log').open('wb') as log:
+        process = subprocess.Popen(command, env=env, stdout=log, stderr=log)
+    try:
+        deadline = time.monotonic() + 60
+        identity = None
+        while time.monotonic() < deadline and identity is None:
+            identity = service_status(config)
+            time.sleep(.05)
+        assert identity and identity['version'] == '0.3.0'
+        with pytest.raises(RuntimeError, match='service stop --yes'):
+            start_service(config)
+        assert service_status(config)['instance_id'] == identity['instance_id']
+        assert process.poll() is None
+        assert stop_service(config)
+        process.wait(timeout=10)
+        replacement = start_service(config)
+        assert replacement['version'] == __version__
+        assert replacement['instance_id'] != identity['instance_id']
+        assert stop_service(config)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_failed_start_only_cleans_up_its_owned_child(tmp_path, monkeypatch):
+    import ai_exp_app.platform_runtime as runtime
+    real_popen = subprocess.Popen
+    children = []
+
+    def capture(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        children.append(process)
+        return process
+
+    monkeypatch.setattr(runtime.subprocess, 'Popen', capture)
+    config = Config(tmp_path, tmp_path / 'cache', port=free_port())
+    with pytest.raises(RuntimeError, match='启动超时'):
+        start_service(config, command=[sys.executable, '-c', 'import time; time.sleep(60)'], timeout=.2)
+    assert len(children) == 1 and children[0].poll() is not None

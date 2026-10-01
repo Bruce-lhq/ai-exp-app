@@ -117,6 +117,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 DispatchQueue.main.async { self.opening = false }
                 return
             }
+            let healthData = self.request("/api/health")
+            let serviceInfo = healthData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            guard serviceInfo?["version"] as? String == Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+                self.alert("需要重启旧版本地服务", "请使用新版本 CLI 执行 ai-experiment service stop --yes，再打开应用。远端训练不会停止。")
+                DispatchQueue.main.async { self.opening = false }
+                return
+            }
             DispatchQueue.main.async {
                 self.showWindow(self.origin + "/" + path)
                 self.opening = false

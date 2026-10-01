@@ -7,7 +7,7 @@ description: Connect AI Experiment Workbench to a user's training project and cl
 
 Produce a working connection, a project with usable parameters, and an imported experiment or a clearly identified next validation step. Use the user's language. Ask for missing facts; do not ask again for facts already established or available through safe inspection.
 
-This skill ships in the workbench source repository. Its helpers require Python 3.12 locally and use the standard library. They do not require an Agent-specific connector. Paths below are relative to the skill directory unless stated otherwise. If only the installed Mac app is present, obtain the matching source release first (GitHub Release Source code ZIP works without configuring GitHub SSH; keep it in a dedicated local folder); installation and build commands live in the repository README.
+This skill ships in the workbench source repository. Its helpers require Python 3.12 locally and use the standard library. They do not require an Agent-specific connector. Paths below are relative to the skill directory unless stated otherwise. Identify the local operating system, architecture, installed app/CLI and active workspace first. Prefer the matching desktop installer or portable CLI from GitHub Releases; do not build a Windows/Linux binary on macOS or assume a POSIX virtualenv path on Windows. CLI packages include the runtime and remote agent. If a helper needs source and only the installed app/CLI is present, obtain the matching source release first (GitHub Release Source code ZIP works without configuring GitHub SSH; keep it in a dedicated local folder); installation and build commands live in the repository README.
 
 ## 1. Discover the current stage
 

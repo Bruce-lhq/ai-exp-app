@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml)
 
-通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
+通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供 macOS、Windows、Linux 桌面应用、CLI 与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
 
 [![AI Experiment 六宫格功能总览](docs/images/workbench-overview.png)](docs/images/workbench-overview.png)
 
@@ -50,35 +50,52 @@ Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`�
 
 ## 安装与启动
 
-### macOS 应用
+### 独立桌面包与 CLI
 
-从 [GitHub Releases](https://github.com/Bruce-lhq/ai-exp-app/releases) 下载 `AI-Experiment-macOS.dmg`，将应用拖入“应用程序”，打开并按首次设置配置工作空间。可先选择“稍后设置”导入本地历史。将应用保留在程序坞，再次点击会聚焦已有窗口。
+从 [GitHub Releases](https://github.com/Bruce-lhq/ai-exp-app/releases) 下载对应系统的安装包或 CLI 压缩包。跨平台包为预览版；自动化验证记录随包发布，Windows 11 与 Linux 桌面的人工验收仍待完成。
 
-应用包含 Python 服务和前端，使用系统 WebKit，无须另装 Python／Node 或打开浏览器。当前公开包目标为 Apple Silicon、macOS 13+；Intel 尚未验收。使用 ad-hoc 签名，尚未完成 Developer ID 公证；首次打开可能需按 [Apple 的说明](https://support.apple.com/102445) 在系统设置中允许。更新应用保留本地数据。远端代理通过源码安装脚本部署。
+| 系统 | 桌面安装包 | CLI 压缩包 |
+| --- | --- | --- |
+| macOS 13+ Apple Silicon | `AI-Experiment-macOS-arm64.dmg` | `AI-Experiment-CLI-macOS-arm64.tar.gz` |
+| macOS 13+ Intel | `AI-Experiment-macOS-x86_64.dmg` | `AI-Experiment-CLI-macOS-x86_64.tar.gz` |
+| Windows 11 x64 | `AI-Experiment-Windows-x64-Setup.exe` | `AI-Experiment-CLI-Windows-x64.zip` |
+| Ubuntu 24.04 x64 | `AI-Experiment-Ubuntu-amd64.deb` | `AI-Experiment-CLI-Linux-amd64.tar.gz` |
 
-### 从源码使用 localhost
+- **Mac：**将应用拖入“应用程序”。使用系统 WebKit，可保留在程序坞。当前 ad-hoc 签名，尚未完成 Developer ID 公证；首次打开可能需按 [Apple 的说明](https://support.apple.com/102445) 在系统设置中允许。
+- **Windows：**运行安装器，以当前用户安装。首次安装需要联网获取 Microsoft WebView2 Runtime；通过开始菜单或桌面图标打开。连接云端需系统 OpenSSH 客户端。
+- **Ubuntu：**在下载目录运行 `sudo apt install ./AI-Experiment-Ubuntu-amd64.deb`，再从应用菜单打开。包会安装桌面库依赖；其他发行版尚未承诺兼容。
 
-本地要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm。macOS 已验收；Linux 可使用网页入口，完整平台验收尚未完成；Windows 原生入口暂未支持。
+安装包和 CLI 压缩包自带 Python 与网页资源，无须另装 Python／Node。CLI 压缩包须完整解压，保留可执行文件旁的 `_internal` 目录；在解压目录执行 `./ai-experiment`（Windows PowerShell 使用 `.\ai-experiment.exe`），也可自行加入 PATH。Linux CLI 的绘图／服务操作不需要图形会话，桌面入口需要 Qt 系统库。
+
+以下示例假设 `ai-experiment` 已在 PATH 中：
+
+```bash
+ai-experiment --help
+ai-experiment service start
+ai-experiment doctor
+ai-experiment history list
+```
+
+`service start` 显示本机网页地址，默认 <http://127.0.0.1:8765>。桌面、网页、CLI 共用同一配置和缓存；重复启动复用自己的后台。升级后若提示旧版后台仍在运行，先停止本地服务再重新启动。关闭窗口保留本地服务，需要退出后台时执行 `ai-experiment service stop --yes`，远端训练与队列继续运行。首次设置可稍后完成，先导入本地历史。CLI 操作与离线出图见 [CLI 使用说明](docs/cli.md)。
+
+### 从源码运行
+
+要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。
 
 ```bash
 git clone https://github.com/Bruce-lhq/ai-exp-app.git
 cd ai-exp-app
 uv venv --python 3.12
-uv pip sync requirements.lock
-uv pip install --no-deps -e .
+uv pip sync --python .venv/bin/python requirements.lock
+uv pip install --python .venv/bin/python --no-deps -e .
 npm --prefix web ci
 npm --prefix web run build
+.venv/bin/ai-experiment service start
 ```
 
-每次从源码目录启动：
+Windows 将上述虚拟环境路径分别换成 `.venv/Scripts/python.exe`、`.venv/Scripts/ai-experiment.exe`。Windows PowerShell 可用正斜杠路径。
 
-```bash
-export AI_EXP_DATA_DIR="$PWD/.local"
-export AI_EXP_CONFIG_FILE="$PWD/config.local.json"
-.venv/bin/python -m ai_exp_app.desktop
-```
-
-打开 <http://127.0.0.1:8765>。服务只监听本机；终端退出本地服务后，远端任务继续。前端开发可另开终端运行 `npm --prefix web run dev`。
+新工作空间使用系统应用数据目录；已有源码或应用工作空间会保留。要隔离开发环境，在启动前指定 `AI_EXP_DATA_DIR` 与 `AI_EXP_CONFIG_FILE`，见 [运行时配置](docs/runtime-configuration.md)。前端开发可另开终端运行 `npm --prefix web run dev`。
 
 ## 手动接入云端实验
 
@@ -97,6 +114,8 @@ Host gpu
     ControlPersist 10m
     ControlPath ~/.ssh/ai-exp-%C
 ```
+
+Windows OpenSSH 配置只保留 Host、HostName、User、IdentityFile 和需要的 Port；上面的 ControlMaster／ControlPersist／ControlPath 仅用于支持连接复用的 Mac／Linux 客户端。
 
 确认主机指纹后测试：
 
@@ -120,21 +139,14 @@ ssh gpu 'python3 --version; nvidia-smi'
 | 云端数据目录 | 可留空；由项目命令或参数指定 |
 | 本地实验导入目录 | `~/gpu_downloads/` |
 
-远端代理安装器位于源码仓库中。即使使用 Mac 应用，手动部署也需要先取得匹配版本源码，并完成上文“从源码使用 localhost”中的 Python 依赖安装（无需构建前端）；以下命令均在源码根目录执行。
-
-源码版使用启动时的同一份 `config.local.json`（已被 Git 忽略）：
+桌面安装包中的 CLI 和独立 CLI 均包含远端代理。保存工作空间设置后，使用同一工作空间的 CLI 安装：
 
 ```bash
-AI_EXP_DATA_DIR="$PWD/.local" AI_EXP_CONFIG_FILE="$PWD/config.local.json" \
-  .venv/bin/python scripts/install_remote.py
+ai-experiment install-agent --read-only
+ai-experiment install-agent
 ```
 
-Mac 应用版改用应用保存的配置：
-
-```bash
-AI_EXP_CONFIG_FILE="$HOME/Library/Application Support/AI Experiment/config.local.json" \
-  .venv/bin/python scripts/install_remote.py
-```
+`--read-only` 也会连接并部署代理，但使远端代理拒绝启动／停止等写操作，适合先检查接入；检查后重新执行不带该选项的安装命令启用完整功能。源码版用 `.venv/bin/ai-experiment`（Windows 用 `.venv/Scripts/ai-experiment.exe`）。显式选择了环境变量工作空间时，安装代理也使用相同的变量。
 
 安装器原子更新标准库 zipapp，不重建队列或训练状态。详细字段见 [运行时配置](docs/runtime-configuration.md)。
 
@@ -159,11 +171,12 @@ AI_EXP_CONFIG_FILE="$HOME/Library/Application Support/AI Experiment/config.local
 ## 架构
 
 ```text
-macOS AppKit + WKWebView          浏览器 localhost
-             \                    /
-              React + Chart.js 前端
+Mac WebKit / Windows Edge / Linux Qt / 浏览器
                        |
-              本地 FastAPI 服务
+              React + Chart.js 前端
+                       |       CLI
+                       |        |
+              本地 FastAPI 服务 + PNG 导出
               SQLite + 文件缓存
                        |
                    系统 SSH
@@ -179,10 +192,10 @@ macOS AppKit + WKWebView          浏览器 localhost
 | `web/` | React 页面、Chart.js、参数与表格编辑 |
 | `src/ai_exp_app/` | API、SQLite、SSH、历史同步、指标统计 |
 | `remote/ai_exp_remote/` | 远端代理、调度、进程管理、快照、项目声明与续跑验证 |
-| `macos/AIExperiment/` | 独立窗口、单实例入口、通知和本地服务管理 |
+| `macos/AIExperiment/`、`src/ai_exp_app/native.py` | 原生窗口、聚焦、文件选择及系统通知 |
 | `skills/experiment-workbench-setup/` | Agent 接入流程、检查脚本与参考资料 |
 | `examples/` | 无训练框架依赖的最小接入示例 |
-| `scripts/` | 远端安装、Mac 构建与工作空间迁移 |
+| `scripts/` | 跨平台构建、安装包验收与工作空间迁移 |
 | `tests/`、`web/tests/` | 后端、前端与浏览器回归 |
 
 远端保存训练文件与队列；本地保存项目、参数组、历史索引、图表／表格偏好和缓存。断线保留缓存，重连补同步。提交时固定代码与参数，后续编辑不改变已提交任务。
@@ -202,28 +215,29 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-CI 使用临时目录、模拟远端接口和小型普通命令测试，不需要连接真实 GPU 或配置 SSH。GitHub Actions 执行 pytest、构建、Vitest 和 Chromium Playwright。
+CI 使用临时目录、模拟远端接口和小型普通命令测试，不需要连接真实 GPU 或配置 SSH。GitHub Actions 在 Linux、Windows Server、两种 Mac 架构执行后端测试，Linux 执行前端测试与 Chromium 回归；包构建流程另测冻结 CLI、离线导出与真实原生渲染器。Windows Server CI 不等同于 Windows 11 人工验收。
 
-### 从源码构建 Mac 应用
+### 构建桌面与 CLI
 
-完成“从源码使用 localhost”中的依赖安装，并安装 Xcode Command Line Tools 后，在源码根目录执行：
+在目标系统／架构上构建，不能在 Mac 上冻结 Windows 或 Linux 可执行文件。先安装对应桌面依赖和 PyInstaller：
 
 ```bash
-uv pip install pyinstaller==6.22.3
-.venv/bin/python scripts/build_macos.py
+uv pip sync --python .venv/bin/python requirements-desktop.lock
+uv pip install --python .venv/bin/python --no-deps -e .
+uv pip install --python .venv/bin/python PyInstaller==6.22.3
 ```
 
-产物为 `dist/AI Experiment.app`、`dist/AI-Experiment-macOS.dmg`，通过 Release 分发，不进 Git。公开构建的中性 Python 环境与检查方法见 [发布说明](docs/releasing.md)。
+Mac 安装 Xcode Command Line Tools 后运行 `.venv/bin/python scripts/build_macos.py`；Windows 安装 NSIS 后运行 `.venv/Scripts/python.exe scripts/build_desktop.py`；Ubuntu 安装包流程见 [发布说明](docs/releasing.md)。产物位于 `dist/releases/`，发布到 GitHub Releases，不进入 Git。
 
 ## Future work
 
 - 应用内自动检查 SSH、上传代码与安装代理；当前通过接入 SKILL 完成。
 - TensorBoard／其他指标存储的原生接入；当前使用标准 JSONL 或转换脚本。
 - 更广泛的外部进程接管和其他 GPU／调度系统支持。
-- Developer ID 签名与公证、Intel Mac、Linux 全面验收与 Windows 支持。
+- Developer ID 签名与公证、Windows 代码签名，以及 Windows 11／Linux 桌面人工验收与更多系统覆盖。
 - 按项目能力在暂停前保存 checkpoint，展示恢复点与可能损失的进度。
 - 多 seed／参数扫描、分组统计与工作空间备份。
 
 ## License
 
-[MIT](LICENSE)。第三方依赖保留各自许可证；Mac 包包含项目许可证与第三方许可证清单。
+[MIT](LICENSE)。第三方依赖保留各自许可证；各平台包包含项目许可证与第三方许可证清单。

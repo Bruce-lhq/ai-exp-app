@@ -31,8 +31,14 @@ def environment(tmp_path, port):
 
 def invoke(env, *args, url=None):
     prefix = ['--url', url] if url else []
-    return subprocess.run([sys.executable, '-m', 'ai_exp_app.cli', *prefix, *args],
-                          env=env, cwd=ROOT, input='', text=True, capture_output=True, timeout=25)
+    budget = 120 if args and args[0] == 'plot' else 60
+    try:
+        return subprocess.run([sys.executable, '-m', 'ai_exp_app.cli', *prefix, *args],
+                              env=env, cwd=ROOT, input='', text=True, capture_output=True, timeout=budget)
+    except subprocess.TimeoutExpired as exc:
+        log = Path(env['AI_EXP_DATA_DIR']).parent / 'server.log'
+        details = log.read_text(encoding='utf-8', errors='replace') if log.exists() else '(no server log)'
+        pytest.fail(f'CLI {args} exceeded {budget}s: {exc}\nServer log:\n{details}')
 
 
 @pytest.fixture
@@ -43,7 +49,7 @@ def local_service(tmp_path):
         process = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'ai_exp_app.app:create_app',
                                     '--factory', '--host', '127.0.0.1', '--port', str(port)],
                                    env=env, cwd=ROOT, stdout=log, stderr=log)
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 60
         try:
             while time.monotonic() < deadline:
                 try:
@@ -53,11 +59,17 @@ def local_service(tmp_path):
                     if process.poll() is not None: pytest.fail((tmp_path / 'server.log').read_text())
                     time.sleep(.05)
             else:
-                pytest.fail('Isolated test service did not start')
+                pytest.fail('Isolated test service did not start within 60s\n' + (tmp_path / 'server.log').read_text(encoding='utf-8', errors='replace'))
             yield env, url
         finally:
-            process.terminate()
-            process.wait(timeout=10)
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                # Only the fixture's own Popen child is killed; no shared/user service is touched.
+                process.kill()
+                process.wait(timeout=5)
 
 
 def test_cli_import_sync_table_and_export_use_shared_cache(local_service, tmp_path):

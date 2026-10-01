@@ -270,9 +270,12 @@ def test_running_import_includes_managed_and_refresh_invalidates_analysis_cache(
     metrics = current / 'metrics.jsonl'
     metrics.write_text('{"event":"validation","tokens_seen":4000000000,"perplexity":30}\n')
     old = import_history(store, {'kind': 'local', 'path': str(source)}, cache, name='same name')
-    store.put('runs', 'live', {'id': 'live', 'status': 'running', 'remote_path': str(current), 'display_name': 'same name'})
-    hidden = import_history(store, {'kind': 'remote', 'path': str(current)}, cache, name='same name', run_id='live', synchronize=False, visibility='tracking')
+    remote_path = '/runs/current'
+    store.put('runs', 'live', {'id': 'live', 'status': 'running', 'remote_path': remote_path, 'display_name': 'same name'})
+    hidden = import_history(store, {'kind': 'remote', 'path': remote_path}, cache, name='same name', run_id='live', synchronize=False, visibility='tracking')
     def rpc(alias, operation, payload):
+        assert payload['path'] == remote_path
+        payload = {**payload, 'path': str(current)}
         if operation == 'file_manifest':
             result = file_manifest(payload)
             (current / 'run.json').write_text('{"status":"running","tick":2}')
