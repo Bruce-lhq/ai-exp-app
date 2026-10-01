@@ -40,15 +40,13 @@ Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`�
 
 ## 界面预览
 
-顶部总览按三列、两行排列，点击可查看大图。截图展示一个训练项目的实际实验，参数和指标名称由该项目提供；个人路径和项目专用说明已做脱敏。
+顶部总览按两列、三行排列，点击可查看大图。截图展示一个训练项目的实际实验，参数和指标名称由该项目提供；个人路径和项目专用说明已做脱敏。
 
-| 运行监控：实时曲线 | 运行监控：实验与队列 | 配置实验 |
-| --- | --- | --- |
-| [查看原图](docs/images/run-monitor-overview.png) | [查看原图](docs/images/run-monitor.png) | [查看原图](docs/images/experiment-configuration.png) |
-
-| 历史管理 | 曲线对比 | 实验列表 |
-| --- | --- | --- |
-| [查看原图](docs/images/history-management.png) | [查看原图](docs/images/curve-comparison.png) | [查看原图](docs/images/experiment-table.png) |
+| 左列 | 右列 |
+| --- | --- |
+| [运行监控：实时曲线](docs/images/run-monitor-overview.png) | [运行监控：实验与队列](docs/images/run-monitor.png) |
+| [配置实验](docs/images/experiment-configuration.png) | [历史管理](docs/images/history-management.png) |
+| [曲线对比](docs/images/curve-comparison.png) | [实验列表](docs/images/experiment-table.png) |
 
 ## 安装与启动
 
