@@ -19,7 +19,7 @@ def main():
     parser.add_argument('--mac-app', help='Built macOS app executable for a real WebKit smoke test')
     args = parser.parse_args()
     executable = Path(args.executable).resolve()
-    with tempfile.TemporaryDirectory(prefix='ai-experiment-smoke-') as folder:
+    with tempfile.TemporaryDirectory(prefix='ai-experiment-smoke-', ignore_cleanup_errors=True) as folder:
         root = Path(folder)
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
@@ -34,17 +34,24 @@ def main():
 
         def call(*arguments, json_result=False):
             command = [str(executable), *arguments]
-            completed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, timeout=75)
+            completed = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, encoding='utf-8', timeout=120)
             if completed.returncode:
                 raise RuntimeError(f'{arguments[0]} failed ({completed.returncode}): {completed.stderr}\n{completed.stdout}')
             return json.loads(completed.stdout) if json_result else completed.stdout
 
         service = None
+        owned = None
+        failure = None
         try:
             call('--help')
             assert call('service', 'status', '--json', json_result=True) == {'running': False}
             service = call('service', 'start', '--json', json_result=True)
             assert service['instance_id'] and service['url'].endswith(':' + str(port))
+            if os.name == 'nt':
+                from smoke_windows_installer import OwnedService, verify_identity
+                verified = verify_identity(root / 'workspace', service['url'])
+                assert verified['instance_id'] == service['instance_id']
+                owned = OwnedService(verified, executable)
             assert call('service', 'start', '--json', json_result=True)['instance_id'] == service['instance_id']
             results['checks'].append('start/reuse own localhost service')
             assert call('config', 'show', '--json', json_result=True)['configured'] is False
@@ -87,16 +94,36 @@ def main():
                 results['checks'].append('real native renderer loads bundled React UI')
             results['packaged_cli'] = True
         except Exception as exc:
+            failure = exc
             results['error'] = str(exc)
-            raise
         finally:
-            if service is not None:
-                call('service', 'stop', '--yes', '--json')
-                assert call('service', 'status', '--json', json_result=True) == {'running': False}
-                results['checks'].append('authenticated service stop')
-            report = Path(args.report).resolve()
-            report.parent.mkdir(parents=True, exist_ok=True)
-            report.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+            try:
+                if service is not None:
+                    call('service', 'stop', '--yes', '--json')
+                    assert call('service', 'status', '--json', json_result=True) == {'running': False}
+                    if owned is not None and not owned.exited(15):
+                        raise RuntimeError('Verified test service has not completely exited')
+                    results['checks'].append('authenticated service stop')
+            except Exception as exc:
+                results['cleanup_error'] = str(exc)
+                if failure is None:
+                    failure = exc
+            finally:
+                if owned is not None:
+                    try:
+                        # This held HANDLE was verified against both private identity and executable.
+                        owned.cleanup()
+                    except Exception as exc:
+                        results['owned_process_cleanup_error'] = str(exc)
+                        if failure is None:
+                            failure = exc
+                    finally:
+                        owned.close()
+                report = Path(args.report).resolve()
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+        if failure is not None:
+            raise failure
         print(json.dumps(results, ensure_ascii=False))
 
 

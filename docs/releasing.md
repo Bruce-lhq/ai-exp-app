@@ -6,7 +6,7 @@ Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校
 
 `.github/workflows/ci.yml` 在 Ubuntu 24.04、Windows Server 2025、macOS Apple Silicon 和 Intel 执行后端测试；前端测试、构建与 Chromium 回归在 Linux 执行。真正依赖远端 Linux `/proc`／进程管理的测试只在 Linux 运行，本地功能仍在四个平台验证，不连接真实 GPU。
 
-`.github/workflows/build-platforms.yml` 在目标系统上构建，无跨系统冻结 Python。主分支相关代码变更、版本 tag 或手动触发都会运行；它只上传 Actions artifacts，不自动创建 Release。
+`.github/workflows/build-platforms.yml` 在目标系统上构建，无跨系统冻结 Python。主分支相关代码变更、版本 tag 或手动触发都会运行；它只上传 Actions artifacts，不自动创建 Release。所有包和普通 CI 通过后，可手动触发 `publish-preview.yml`，给出已存在的版本 tag 和包构建 run ID；发布器核对同一 commit、四个平台及安装验收证据后才发布预览 Release。
 
 | 构建环境 | 桌面 | CLI |
 | --- | --- | --- |
