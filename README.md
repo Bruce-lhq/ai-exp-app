@@ -2,17 +2,26 @@
 
 [![CI](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml)
 
+通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
+
 ## 最简单的开始方法
 
 打开 Claude Code、Codex 或其他能操作终端的 AI Agent，把下面整段话复制给它：
 
-> 请读取 https://github.com/Bruce-lhq/ai-exp-app 中的 skills/experiment-workbench-setup/SKILL.md，并按它帮我安装和配置 AI Experiment。先检查已有信息，只问缺少的内容。我可能只有本地代码和一台刚租的云 GPU，也可能已经有云端环境和实验。请检查项目真实启动方式、指标和已有严格续跑功能，生成所需配置或适配脚本，完成连接、参数、历史、图表和缓存验收；需要试跑时先说明配置与资源。遇到失败按检查结果修复，不要跳过后宣称完成。
+> 请读取 https://github.com/Bruce-lhq/ai-exp-app/blob/main/skills/experiment-workbench-setup/SKILL.md，并按它帮我安装和配置 AI Experiment。先检查已有信息，只问缺少的内容。我可能只有本地代码和一台刚租的云 GPU，也可能已经有云端环境和实验。请检查项目真实启动方式、指标和已有严格续跑功能，生成所需配置或适配脚本，完成连接、参数、历史、图表和缓存验收；需要试跑时先说明配置与资源。遇到失败按检查结果修复，不要跳过后宣称完成。
 
 你只需要提供 Agent 询问的连接信息和代码位置；密码、私钥不用发到聊天里。没有现成实验时，可在确认后运行一个极小的验收任务。使用哪家云 GPU、目录怎么组织、训练用什么框架，都由 Agent 根据实际项目检查并接入；它需要能够访问对应代码和云端环境。
 
-通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
+项目接入不限定训练框架、脚本名称或模型。Agent 根据实际代码生成 `workbench.project.json`，必要时适配配置与指标输出，并检查项目已有的严格续跑能力。
 
-项目通过 `workbench.project.json` 声明启动命令、参数和环境，不限定训练框架、脚本名称或模型。已有项目通常需要补充这份配置，并将指标输出为约定的 JSONL；CSV 等输出可通过接入 SKILL 的转换脚本导入。接入 Agent 检查项目已有的 checkpoint 保存／恢复实现，判断严格续跑能力并配置对应校验；工作台执行该校验，不按项目名称或文件格式猜测。
+<details>
+<summary>可选：把接入 SKILL 安装到 Agent 工具中</summary>
+
+直接读取 [接入 SKILL](skills/experiment-workbench-setup/SKILL.md) 即可使用，无须安装。要作为命名 skill 使用，复制整个目录到工具的 skill 目录；保留 `references/` 和 `scripts/`，不要只复制 SKILL.md。
+
+Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`（[官方说明](https://code.claude.com/docs/en/skills)）；Codex 使用其当前版本支持的 skill 目录（[官方说明](https://developers.openai.com/codex/skills/)）。
+
+</details>
 
 ## 功能
 
@@ -57,28 +66,9 @@ export AI_EXP_CONFIG_FILE="$PWD/config.local.json"
 
 打开 <http://127.0.0.1:8765>。服务只监听本机；终端退出本地服务后，远端任务继续。前端开发可另开终端运行 `npm --prefix web run dev`。
 
-### 从源码构建 Mac 应用
+## 手动接入云端实验
 
-完成上述依赖安装和 Xcode Command Line Tools 安装后：
-
-```bash
-uv pip install pyinstaller==6.22.3
-.venv/bin/python scripts/build_macos.py
-```
-
-产物为 `dist/AI Experiment.app`、`dist/AI-Experiment-macOS.dmg`，通过 Release 分发，不进 Git。公开构建的中性 Python 环境与检查方法见 [发布说明](docs/releasing.md)。
-
-## Quickstart：交给 AI Agent 配置
-
-推荐让 Claude Code、Codex 或其他能操作终端的 Agent 阅读 [接入 SKILL](skills/experiment-workbench-setup/SKILL.md)，然后发送：
-
-> 请使用 experiment-workbench-setup，检查我目前的 SSH、代码和实验情况，只询问缺失的信息，逐步配置工作台，完成连接、参数和历史曲线验收。启动训练前先告诉我试跑配置。
-
-SKILL 覆盖两种起点：刚租云 GPU、尚未建立 SSH、代码仍在本地；或云端已有环境、代码和实验。它提供检查脚本、配置验证、历史格式转换和逐阶段验收，失败时按具体检查结果修复。密码、私钥和提供商令牌不写入工作台配置。
-
-可直接让 Agent 阅读仓库中的文件。要作为命名 skill 安装，复制整个目录到该工具的 skill 目录。例如 Claude Code 的项目目录 `.claude/skills/experiment-workbench-setup/`（[官方说明](https://code.claude.com/docs/en/skills)）；Codex 使用其当前版本支持的 skill 目录（[官方说明](https://developers.openai.com/codex/skills/)）。保留 `references/` 和 `scripts/`，不要只复制 SKILL.md。
-
-## Quickstart：手动配置
+使用 Agent 的用户可由它完成以下步骤。手动操作前，先按上文安装并启动本地应用。
 
 ### 1. 确认 SSH
 
@@ -116,7 +106,9 @@ ssh gpu 'python3 --version; nvidia-smi'
 | 云端数据目录 | 可留空；由项目命令或参数指定 |
 | 本地实验导入目录 | `~/gpu_downloads/` |
 
-源码版启动与安装使用同一份忽略的 `config.local.json`：
+远端代理安装器位于源码仓库中。即使使用 Mac 应用，手动部署也需要先取得匹配版本源码，并完成上文“从源码使用 localhost”中的 Python 依赖安装（无需构建前端）；以下命令均在源码根目录执行。
+
+源码版使用启动时的同一份 `config.local.json`（已被 Git 忽略）：
 
 ```bash
 AI_EXP_DATA_DIR="$PWD/.local" AI_EXP_CONFIG_FILE="$PWD/config.local.json" \
@@ -185,6 +177,8 @@ macOS AppKit + WKWebView          浏览器 localhost
 
 ## 开发与测试
 
+### 运行测试
+
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix web test
@@ -195,6 +189,17 @@ npm run test:e2e
 ```
 
 CI 使用临时目录、模拟远端接口和小型普通命令测试，不需要连接真实 GPU 或配置 SSH。GitHub Actions 执行 pytest、构建、Vitest 和 Chromium Playwright。
+
+### 从源码构建 Mac 应用
+
+完成“从源码使用 localhost”中的依赖安装，并安装 Xcode Command Line Tools 后，在源码根目录执行：
+
+```bash
+uv pip install pyinstaller==6.22.3
+.venv/bin/python scripts/build_macos.py
+```
+
+产物为 `dist/AI Experiment.app`、`dist/AI-Experiment-macOS.dmg`，通过 Release 分发，不进 Git。公开构建的中性 Python 环境与检查方法见 [发布说明](docs/releasing.md)。
 
 ## Future work
 
