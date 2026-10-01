@@ -4,7 +4,7 @@
 
 通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
 
-![历史实验曲线对比](docs/images/curve-comparison.png)
+[![AI Experiment 六宫格功能总览](docs/images/workbench-overview.png)](docs/images/workbench-overview.png)
 
 ## 最简单的开始方法
 
@@ -40,35 +40,15 @@ Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`�
 
 ## 界面预览
 
-截图展示一个训练项目的实际实验，参数和指标名称由该项目提供；个人路径和项目专用说明已做脱敏。
+顶部总览按三列、两行排列，点击可查看大图。截图展示一个训练项目的实际实验，参数和指标名称由该项目提供；个人路径和项目专用说明已做脱敏。
 
-<details>
-<summary>配置实验：参数组、代码版本与队列</summary>
+| 运行监控：实时曲线 | 运行监控：实验与队列 | 配置实验 |
+| --- | --- | --- |
+| [查看原图](docs/images/run-monitor-overview.png) | [查看原图](docs/images/run-monitor.png) | [查看原图](docs/images/experiment-configuration.png) |
 
-![配置实验](docs/images/experiment-configuration.png)
-
-</details>
-
-<details>
-<summary>运行监控：实时曲线、实验状态与等待队列</summary>
-
-![运行监控](docs/images/run-monitor.png)
-
-</details>
-
-<details>
-<summary>历史管理：导入、同步、导出与续跑</summary>
-
-![历史管理](docs/images/history-management.png)
-
-</details>
-
-<details>
-<summary>实验列表：超参数、指标位置与 baseline 差值</summary>
-
-![实验对比表格](docs/images/experiment-table.png)
-
-</details>
+| 历史管理 | 曲线对比 | 实验列表 |
+| --- | --- | --- |
+| [查看原图](docs/images/history-management.png) | [查看原图](docs/images/curve-comparison.png) | [查看原图](docs/images/experiment-table.png) |
 
 ## 安装与启动
 
