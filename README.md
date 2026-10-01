@@ -4,6 +4,8 @@
 
 通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供独立 macOS 应用与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
 
+![历史实验曲线对比](docs/images/curve-comparison.png)
+
 ## 最简单的开始方法
 
 打开 Claude Code、Codex 或其他能操作终端的 AI Agent，把下面整段话复制给它：
@@ -35,6 +37,38 @@ Claude Code 可使用项目目录 `.claude/skills/experiment-workbench-setup/`�
 - 表格模板、baseline 差值、指标 min/max/final 及采样位置、Markdown 导出／复制。
 - 原始超参数和指标只读；缺失参数可补填，备注可编辑，补充内容独立保存。
 - 接入 Agent 验证项目现有完整状态续跑后，可从历史管理载入续跑到参数编辑区。
+
+## 界面预览
+
+截图展示一个训练项目的实际实验，参数和指标名称由该项目提供；个人路径和项目专用说明已做脱敏。
+
+<details>
+<summary>配置实验：参数组、代码版本与队列</summary>
+
+![配置实验](docs/images/experiment-configuration.png)
+
+</details>
+
+<details>
+<summary>运行监控：实时曲线、实验状态与等待队列</summary>
+
+![运行监控](docs/images/run-monitor.png)
+
+</details>
+
+<details>
+<summary>历史管理：导入、同步、导出与续跑</summary>
+
+![历史管理](docs/images/history-management.png)
+
+</details>
+
+<details>
+<summary>实验列表：超参数、指标位置与 baseline 差值</summary>
+
+![实验对比表格](docs/images/experiment-table.png)
+
+</details>
 
 ## 安装与启动
 
