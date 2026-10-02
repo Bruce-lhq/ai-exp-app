@@ -25,6 +25,7 @@ export const statusNames: Record<string, string> = {
 let lastRuns: Run[] = [];
 let lastQueue: any = { runs: [], paused: false };
 let lastPlot: { key: string; series: Series[] } | undefined;
+const removableStatuses = ["paused", "stopped", "failed", "completed", "external_exited"];
 export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>(lastRuns),
     [queue, setQueue] = useState<any>(lastQueue),
@@ -200,9 +201,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
             <Empty>在配置实验中启动或加入队列。</Empty>
           ) : (
             runs.map((r) => (
+              <div className="run-entry" key={r.id}>
               <button
                 className={`run-row ${selected === r.id ? "selected" : ""}`}
-                key={r.id}
                 onClick={() => setSelected(r.id)}
               >
                 <span>
@@ -220,6 +221,14 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
                   {statusNames[r.status] || r.status}
                 </span>
               </button>
+              {r.status !== "running" && <button
+                className="icon danger"
+                aria-label={`删除 ${r.display_name} 的监控记录`}
+                title={removableStatuses.includes(r.status) ? "删除记录" : "实验结束或暂停后可删除记录"}
+                disabled={!removableStatuses.includes(r.status)}
+                onClick={() => setRemove(r.id)}
+              ><Trash2 size={14} /></button>}
+              </div>
             ))
           )}
         </section>
@@ -310,9 +319,6 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               {runs.find((x) => x.id === selected)?.status === "external_running" && (runs.find((x) => x.id === selected)?.adopted
                 ? <button onClick={() => { setStopAction('pause'); setPauseAlso(false); setStop(selected); }}><Pause size={14} />暂停实验</button>
                 : <button onClick={() => action(async () => { await api(`/api/runs/${selected}/adopt`, {}); notify('进程身份已验证并接管，训练继续运行'); })}>接管进程</button>)}
-              {["paused", "stopped", "failed", "completed", "external_exited"].includes(runs.find((x) => x.id === selected)?.status || "") && (
-                <button className="danger" onClick={() => setRemove(selected)}><Trash2 size={14} />删除记录</button>
-              )}
             </div>
           </div>
           <details open>

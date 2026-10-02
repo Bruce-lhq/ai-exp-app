@@ -640,6 +640,20 @@ main {
   text-align: left;
   padding: 16px 20px;
 }
+.run-entry {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f0f3f7;
+}
+.run-entry .run-row {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+.run-entry > .icon {
+  flex-shrink: 0;
+  margin-right: 16px;
+}
 .run-row.selected {
   background: #f1f5ff;
   border-left: 3px solid #4274dd;
