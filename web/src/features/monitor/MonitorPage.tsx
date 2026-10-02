@@ -26,6 +26,7 @@ let lastRuns: Run[] = [];
 let lastQueue: any = { runs: [], paused: false };
 let lastPlot: { key: string; series: Series[] } | undefined;
 const removableStatuses = ["paused", "stopped", "failed", "completed", "external_exited"];
+const hiddenRunIds = new Set<string>();
 export function MonitorPage({ notify }: { notify: (s: string) => void }) {
   const [runs, setRuns] = useState<Run[]>(lastRuns),
     [queue, setQueue] = useState<any>(lastQueue),
@@ -55,7 +56,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       api("/api/runs", undefined, undefined, { background: true }),
       api("/api/queue", undefined, undefined, { background: true }),
     ]);
-    lastRuns = items(r);
+    lastRuns = items<Run>(r).filter((run) => !hiddenRunIds.has(run.id));
     lastQueue = q;
     setRuns(lastRuns);
     setQueue(q);
@@ -137,6 +138,31 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       await refresh();
     } catch (e) {
       notify((e as Error).message);
+    }
+  }
+  async function removeRecord(id: string) {
+    const record = runs.find((run) => run.id === id);
+    if (!record || hiddenRunIds.has(id)) return;
+    const index = runs.findIndex((run) => run.id === id);
+    hiddenRunIds.add(id);
+    lastRuns = lastRuns.filter((run) => run.id !== id);
+    setRuns((current) => current.filter((run) => run.id !== id));
+    setRemove("");
+    if (selected === id) setSelected("");
+    try {
+      await api(`/api/runs/${id}/remove`, { confirmed: true }, undefined, { background: true });
+      notify("已删除监控记录，历史和实验文件均保留");
+    } catch (error) {
+      hiddenRunIds.delete(id);
+      const restore = (current: Run[]) => {
+        if (current.some((run) => run.id === id)) return current;
+        const next = [...current];
+        next.splice(Math.min(index, next.length), 0, record);
+        return next;
+      };
+      lastRuns = restore(lastRuns);
+      setRuns(restore);
+      notify(`删除未完成，记录已恢复：${(error as Error).message}`);
     }
   }
   const settings = useMemo<ChartSettings>(() => ({
@@ -366,14 +392,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
             <button onClick={() => setRemove("")}>取消</button>
             <button
               className="danger"
-              onClick={() =>
-                action(async () => {
-                  await api(`/api/runs/${remove}/remove`, { confirmed: true });
-                  setRemove("");
-                  if (selected === remove) setSelected("");
-                  notify("已删除监控记录，历史和实验文件均保留");
-                })
-              }
+              onClick={() => void removeRecord(remove)}
             >
               确认删除记录
             </button>

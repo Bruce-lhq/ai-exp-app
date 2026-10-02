@@ -30,3 +30,32 @@ test('stopped managed run has confirmed delete and cancel keeps it', async ({ pa
   await page.getByRole('button', {name:'确认删除记录',exact:true}).click();
   await expect(page.getByRole('button', {name:/2B 已停止实验/})).toHaveCount(0);
 });
+
+test('slow deletion hides immediately, stale refresh stays hidden, failure restores record', async ({ page }) => {
+  let finishRemoval!: () => void;
+  const pending = new Promise<void>(resolve => { finishRemoval = resolve; });
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/remove')) {
+      await pending;
+      await route.fulfill({status:502,json:{detail:'连接失败'}});
+      return;
+    }
+    const body = path === '/api/runs' ? [{id:'slow',display_name:'慢速删除测试',status:'stopped'}]
+      : path === '/api/queue' ? {runs:[]}
+      : path === '/api/analysis/series' ? {series:[],warnings:[]} : [];
+    await route.fulfill({json:body});
+  });
+  await page.goto('/');
+  const remove = page.getByRole('button', {name:'删除 慢速删除测试 的监控记录',exact:true});
+  await remove.click();
+  await page.getByRole('button', {name:'确认删除记录',exact:true}).click();
+  await expect(remove).toHaveCount(0);
+  await expect(page.getByRole('button', {name:'确认删除记录',exact:true})).toHaveCount(0);
+  await expect(page.getByText('正在从云端更新…', {exact:true})).toHaveCount(0);
+  await page.getByRole('button', {name:'刷新',exact:true}).click();
+  await expect(remove).toHaveCount(0);
+  finishRemoval();
+  await expect(remove).toBeVisible();
+  await expect(page.getByText('删除未完成，记录已恢复：连接失败', {exact:true})).toBeVisible();
+});
