@@ -11,6 +11,28 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <link rel="icon" type="image/svg+xml" href="/icons/app-icon.svg" />
     <title>AI Experiment</title>
+    <script>
+      (function () {
+        function showFailure() {
+          var message = document.getElementById("startup-message");
+          if (message) message.textContent = "页面尚未加载完成。请检查 VPN 和 Termius 转发，重新连接后点击重试。";
+        }
+        window.addEventListener("error", function (event) {
+          if (event.message || (event.target && event.target.tagName === "SCRIPT")) showFailure();
+        }, true);
+        setTimeout(showFailure, 10000);
+      })();
+    </script>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body>
+    <div id="root">
+      <div style="padding:32px;font:16px system-ui;color:#25334b;background:#f2f5f9;min-height:100vh;box-sizing:border-box">
+        <h1 style="font-size:24px">AI Experiment</h1>
+        <p id="startup-message" role="status">正在加载工作台…</p>
+        <a href="/">重新加载</a>
+        <noscript><p>浏览器已禁用 JavaScript，请启用后重新加载。</p></noscript>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
