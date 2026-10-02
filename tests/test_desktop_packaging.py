@@ -1,6 +1,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import plistlib
 import tarfile
 import zipfile
 
@@ -46,3 +47,30 @@ def test_windows_uninstaller_preserves_shared_workspace():
     assert 'RMDir /r "$LOCALAPPDATA' not in uninstall
     assert 'RequestExecutionLevel user' in source
     assert 'WebView2Setup.exe' in source
+
+
+def test_macos_bundle_version_matches_bundled_backend(tmp_path, monkeypatch):
+    # A mismatched bundle version opens a modal warning before the native smoke can run.
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    monkeypatch.setenv('SDKROOT', str(tmp_path / 'sdk'))
+    spec = importlib.util.spec_from_file_location('macos_builder', ROOT / 'scripts/build_macos.py')
+    macos = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(macos)
+    monkeypatch.setattr(macos, 'ROOT', tmp_path)
+    monkeypatch.setattr(macos, 'APP', tmp_path / 'dist/AI Experiment.app')
+    monkeypatch.setattr(macos, '__version__', '1.2.3.dev4')
+    monkeypatch.setattr(macos.platform, 'machine', lambda: 'arm64')
+    monkeypatch.setattr('sys.argv', ['build_macos.py', '--arch', 'arm64', '--skip-web'])
+    (tmp_path / 'web/dist').mkdir(parents=True)
+    frozen = tmp_path / 'frozen'
+    frozen.mkdir()
+    (frozen / 'ai-experiment').write_text('bundled executable')
+    monkeypatch.setattr(macos, 'freeze_cli', lambda **kwargs: frozen)
+    monkeypatch.setattr(macos, 'write_licenses', lambda path: None)
+    monkeypatch.setattr(macos, 'archive_cli', lambda *args: None)
+    monkeypatch.setattr(macos.subprocess, 'run', lambda *args, **kwargs: None)
+    macos.main()
+    info = plistlib.loads((macos.APP / 'Contents/Info.plist').read_bytes())
+    assert info['CFBundleShortVersionString'] == '1.2.3.dev4'
+    assert 'AIExperimentRoot' not in info
+    assert (macos.APP / 'Contents/Resources/server/ai-experiment').is_file()
