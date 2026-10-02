@@ -75,8 +75,10 @@ def create_router(store, cache_root: Path):
             project = next((p for p in candidates if p['id'] == default or p.get('is_default')), candidates[0] if candidates else None)
         if not project:
             raise HTTPException(422, '请先添加此云端实验使用的代码项目')
+        execution = project_payload(store, project)
         value = remote(source.get('ssh_alias', 'gpu'), 'checkpoint_preview', {
-            'path': source['path'], 'project': {**project_payload(store, project), 'code': project.get('code', {'kind': 'working_tree', 'ref': None})}})
+            'path': source['path'], 'python': execution['python'],
+            'project': {**execution, 'code': project.get('code', {'kind': 'working_tree', 'ref': None})}})
         ticket = secrets.token_urlsafe(24)
         store.put('resume_drafts', ticket, {'id': ticket, 'history_id': identity,
             'ssh_alias': source.get('ssh_alias', 'gpu'), 'path': value['path'], 'identity': value['identity']})

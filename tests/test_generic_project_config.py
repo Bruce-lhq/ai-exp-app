@@ -90,6 +90,7 @@ def test_resume_project_profile_propagates_without_requiring_token_progress(tmp_
         assert alias == "compute" and operation == "checkpoint_preview"
         assert payload["project"]["path"] == "/srv/project"
         assert payload["project"]["python"] == "/env/bin/python"
+        assert payload["python"] == "/env/bin/python"
         assert payload["project"]["integration"] == profile
         return {"path": "/runs/classifier/checkpoints/latest.bin", "identity": {"size": 24},
                 "training": {}, "runtime": {"gpu_count": 1}, "step": 200}
