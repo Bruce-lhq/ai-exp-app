@@ -37,3 +37,24 @@ def test_homepage_refreshes_session_after_service_restart(tmp_path):
         home = second.get('/')
         assert second.cookies.get('ai_exp_session') != old_cookie
         assert second.get('/api/projects').status_code == 200
+
+
+def test_history_is_compressed_without_changing_data_or_session_security(tmp_path):
+    import json
+    from ai_exp_app.history.importer import import_history
+
+    app = create_app(tmp_path / 'workspace')
+    source = tmp_path / 'experiment'
+    source.mkdir()
+    (source / 'args.json').write_text(json.dumps({'learning_rate': 0.001, 'description': 'training parameter ' * 1000}))
+    import_history(app.state.store, {'kind': 'local', 'path': str(source)}, tmp_path / 'cache', 'Existing experiment')
+    client = TestClient(app)
+    assert client.get('/api/history', headers={'Accept-Encoding': 'gzip'}).status_code == 403
+    client.get('/')
+    plain = client.get('/api/history', headers={'Accept-Encoding': 'identity'})
+    compressed = client.get('/api/history', headers={'Accept-Encoding': 'gzip'})
+    assert compressed.json() == plain.json()
+    assert compressed.json()[0]['name'] == 'Existing experiment'
+    assert compressed.headers['content-encoding'] == 'gzip'
+    assert 'accept-encoding' in compressed.headers['vary'].lower()
+    assert int(compressed.headers['content-length']) < len(plain.content) / 4
