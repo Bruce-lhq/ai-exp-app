@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 from ai_exp_app import __version__
 from ai_exp_app.config import Config
 from ai_exp_app.db import Store
@@ -61,6 +62,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.state.instance_id = str(uuid.uuid4())
     app.state.desktop_seen = 0.0
     picker_requests = {}
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.add_middleware(LocalSessionMiddleware, token=secrets.token_urlsafe(32), native_token=native_token)
     app.include_router(project_router(store))
     app.include_router(runs.create_router())
