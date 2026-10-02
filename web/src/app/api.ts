@@ -1,11 +1,13 @@
 let sessionRenewal: Promise<void> | undefined;
 async function renewSession() {
   if (!sessionRenewal) {
-    sessionRenewal = fetch("/", { credentials: "same-origin", cache: "no-store" })
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    sessionRenewal = fetch("/", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("无法重新连接本地服务");
       })
-      .finally(() => { sessionRenewal = undefined; });
+      .finally(() => { clearTimeout(timer); sessionRenewal = undefined; });
   }
   return sessionRenewal;
 }
@@ -13,10 +15,19 @@ export async function api<T = any>(
   path: string,
   body?: unknown,
   method?: string,
-  options: { background?: boolean; signal?: AbortSignal } = {},
+  options: { background?: boolean; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<T> {
   const requestMethod = method || (body === undefined ? "GET" : "POST");
   const payload = body === undefined && requestMethod !== "GET" ? {} : body;
+  const timeoutMs = options.timeoutMs ?? (requestMethod === "GET" ||
+    (path.endsWith("/schema") && (body as any)?.refresh === false) ||
+    path === "/api/analysis/series" ? 20000 : 0);
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (options.signal?.aborted) cancel();
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  let timedOut = false;
+  const timer = timeoutMs > 0 ? setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs) : undefined;
   const local = path.startsWith("/api/analysis/") && !(body as any)?.live_ids?.length ||
     path.startsWith("/api/templates") || path.startsWith("/api/notifications") ||
     path === "/api/connection" || path === "/api/settings/local" ||
@@ -31,7 +42,7 @@ export async function api<T = any>(
     const request = () => fetch(path, {
       method: requestMethod,
       credentials: "same-origin",
-      signal: options.signal,
+      signal: controller.signal,
       headers:
         payload === undefined ? undefined : { "Content-Type": "application/json" },
       body: payload === undefined ? undefined : JSON.stringify(payload),
@@ -44,24 +55,29 @@ export async function api<T = any>(
         response = await request();
       }
     }
+    if (!response.ok) {
+      let message;
+      try {
+        const error = await response.json();
+        message =
+          typeof error.detail === "string"
+            ? error.detail
+            : JSON.stringify(error.detail || error.error || error);
+      } catch {
+        message = response.statusText;
+      }
+      throw new Error(message || `请求失败 (${response.status})`);
+    }
+    if (response.status === 204) return undefined as T;
+    return await response.json();
+  } catch (error) {
+    if (timedOut) throw new Error("连接超时，数据尚未加载。请检查 VPN 和 Termius 转发，恢复连接后重试。");
+    throw error;
   } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
     loading(-1);
   }
-  if (!response.ok) {
-    let message;
-    try {
-      const error = await response.json();
-      message =
-        typeof error.detail === "string"
-          ? error.detail
-          : JSON.stringify(error.detail || error.error || error);
-    } catch {
-      message = response.statusText;
-    }
-    throw new Error(message || `请求失败 (${response.status})`);
-  }
-  if (response.status === 204) return undefined as T;
-  return response.json();
 }
 export function download(
   content: string,
