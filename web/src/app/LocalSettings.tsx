@@ -29,15 +29,20 @@ export function LocalSettingsDialog({ initial, firstRun, close, notify }: {
   notify: (message: string) => void;
 }) {
   const [draft, setDraft] = useState(initial), [saving, setSaving] = useState(false), [error, setError] = useState("");
-  const input = ([key, title]: readonly [string, string]) => (
+  const localMode = draft.connection_mode === "local";
+  const input = ([key, originalTitle]: readonly [string, string]) => {
+    const title = localMode && key === "ssh_alias" ? "代理主机标识" : originalTitle;
+    return (
     <label key={key} className="local-setting-field">
-      {title}{requiredFields.has(key) && " *"}
+      {title}{(requiredFields.has(key) || localMode && key === "remote_state_dir") && " *"}
       <input aria-label={title} value={draft[key] || ""} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} />
     </label>
   );
+  };
   return <Modal title={firstRun ? "设置工作空间" : "工作空间设置"} close={close}>
-    <p>填写这台电脑使用的 SSH 主机和目录。设置仅保存在本机；稍后设置也可以查看本地历史、画图和列表。</p>
-    <p>* 为运行云端实验所需；云端实验目录请填写绝对路径；数据目录仅在训练项目需要时填写。</p>
+    <p>{localMode ? "工作台直接使用所在 GPU 的实验代理与现有队列，不再 SSH 登录自己。代理主机标识须与现有配置一致。" : "填写后台所在电脑使用的 SSH 主机和目录。设置保存在后台工作空间；稍后设置也可以查看缓存历史、画图和列表。"}</p>
+    <p>“本地”目录指工作台后台所在电脑的目录。部署在 GPU 时，本地导入也浏览 GPU 文件，不是 iPhone 文件夹。</p>
+    <p>* 为运行实验所需；实验目录请填写绝对路径；数据目录仅在训练项目需要时填写。{localMode && "本机模式的 Python、代理和状态目录均须为绝对路径，状态目录必须复用现有代理目录。"}</p>
     <form onSubmit={async (event) => {
       event.preventDefault();
       setSaving(true);
@@ -49,7 +54,7 @@ export function LocalSettingsDialog({ initial, firstRun, close, notify }: {
       } catch (failure) { setError((failure as Error).message); }
       finally { setSaving(false); }
     }}>
-      <div className="local-settings-fields">{fields.map(input)}</div>
+      <div className="local-settings-fields"><label className="local-setting-field">连接方式<select aria-label="连接方式" value={draft.connection_mode || "ssh"} onChange={(event) => setDraft({ ...draft, connection_mode: event.target.value })}><option value="ssh">SSH 远端</option><option value="local">本机 GPU 代理</option></select></label>{fields.map(input)}</div>
       <details className="local-settings-advanced"><summary>高级设置</summary><div className="local-settings-fields">{advancedFields.map(input)}</div></details>
       {error && <div role="alert" className="warning">{error}</div>}
       <footer><button type="button" onClick={close}>{firstRun ? "稍后设置，使用本地数据" : "取消"}</button><button type="submit" className="primary" disabled={saving}>{saving ? "保存中…" : "保存设置"}</button></footer>

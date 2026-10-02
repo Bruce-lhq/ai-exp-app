@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 export type Series = {
   id: string;
@@ -207,15 +207,30 @@ export function ExperimentChart({
   appearance?: Record<string, { name?: string; color?: string }>;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 600px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 600px)");
+    const update = () => setCompact(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   useEffect(() => {
     if (!canvas.current) return;
-    const chart = new Chart(
-      canvas.current,
-      chartConfiguration(series, settings, appearance),
-    );
+    const config = chartConfiguration(series, settings, appearance);
+    if (compact) {
+      config.plugins = config.plugins.filter((plugin) => plugin.id !== "inset-line-legend");
+      config.options.plugins.title.font.size = 18;
+      config.options.scales.x.ticks.font.size = 12;
+      config.options.scales.y.ticks.font.size = 12;
+      config.options.scales.x.title.font.size = 14;
+      config.options.scales.y.title.font.size = 14;
+    }
+    const chart = new Chart(canvas.current, config);
     return () => chart.destroy();
-  }, [series, settings, appearance]);
+  }, [series, settings, appearance, compact]);
   return (
+    <>
+    {compact && <ul className="mobile-chart-legend" aria-label="曲线图例">{series.map((item, index) => <li key={item.id}><i style={{ borderColor: seriesColors(series, appearance)[index] }} />{appearance[item.id]?.name || item.name}</li>)}</ul>}
     <div className="chart" style={{ aspectRatio: `${settings.width} / ${settings.height}` }}>
       <canvas
         ref={canvas}
@@ -223,6 +238,7 @@ export function ExperimentChart({
         role="img"
       />
     </div>
+    </>
   );
 }
 export function downloadPng(

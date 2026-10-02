@@ -55,7 +55,7 @@ export default function App() {
       api("/api/connection")
         .then(setConnection)
         .catch(() =>
-          setConnection({ connected: false, error: "本地服务暂时不可用" }),
+          setConnection({ connected: false, error: "工作台连接中断，请检查 VPN 与 SSH 隧道" }),
         );
     check();
     const t = setInterval(check, 10000);
@@ -95,6 +95,7 @@ export default function App() {
             <button
               key={n.id}
               className={page === n.id ? "active" : ""}
+              aria-current={page === n.id ? "page" : undefined}
               onClick={() => setPage(n.id)}
             >
               <n.icon size={19} />
@@ -126,7 +127,7 @@ export default function App() {
               catch (error) { notify((error as Error).message); }
             }}><Settings size={17} /></button>
             <span
-              title={connection.error || "SSH 连接正常"}
+              title={connection.error || "实验代理连接正常"}
               className="connection"
             >
               <i className={connection.connected ? "online" : ""} />
@@ -141,6 +142,7 @@ export default function App() {
             </button>
           </div>
         </header>
+        {!connection.connected && connection.error && <p className="connection-warning" role="status">{connection.error}。恢复后自动重连；训练不会因此中断。</p>}
         {noticeOpen&&<section className="panel notifications"><div className="panel-heading"><h3>实验通知</h3><button onClick={async()=>{try{notify(await enableSystemNotifications())}catch(e){notify((e as Error).message)}}}>启用系统通知</button></div>{notices.length?notices.map(n=><button className="run-row" key={n.id} onClick={async()=>{try{await api(`/api/notifications/${n.id}/read`,{});setNotices(ns=>ns.map(x=>x.id===n.id?{...x,read:true}:x));history.replaceState(null,'',`?run=${encodeURIComponent(n.run_id)}`);setPage('monitor');setNoticeOpen(false)}catch(e){notify((e as Error).message)}}}><span><strong>{n.title}</strong><small>{n.body}</small></span><span>{n.read?'已读':'未读'}</span></button>):<p className="empty">暂无实验通知</p>}</section>}
         <main>
           {(page === "configure" || configureVisited) && <div hidden={page !== "configure"}>

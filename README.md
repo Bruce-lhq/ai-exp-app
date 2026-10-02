@@ -78,6 +78,10 @@ ai-experiment history list
 
 `service start` 显示本机网页地址，默认 <http://127.0.0.1:8765>。桌面、网页、CLI 共用同一配置和缓存；重复启动复用自己的后台。升级后若提示旧版后台仍在运行，先停止本地服务再重新启动。关闭窗口保留本地服务，需要退出后台时执行 `ai-experiment service stop --yes`，远端训练与队列继续运行。首次设置可稍后完成，先导入本地历史。CLI 操作与离线出图见 [CLI 使用说明](docs/cli.md)。
 
+### iPhone 浏览器入口
+
+源码版新增 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 VPN 与 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。本地手机视口测试不等同于真实 iPhone 验收；GPU 部署与真机验收尚待完成，现有 v0.4.1 发布包未包含此功能。
+
 ### 从源码运行
 
 要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。

@@ -121,3 +121,16 @@ def test_dataset_directory_is_optional_for_generic_training(tmp_path):
     config.save_local_settings({"remote_runs_root": "/srv/runs"})
     assert config.configured
     assert config.local_settings["remote_data_root"] == ""
+
+
+def test_local_agent_mode_requires_explicit_absolute_agent_and_state(tmp_path):
+    config = Config.load(tmp_path)
+    with pytest.raises(ValueError, match='绝对路径'):
+        config.save_local_settings({'connection_mode': 'local'})
+    with pytest.raises(ValueError, match='连接方式'):
+        config.save_local_settings({'connection_mode': 'other'})
+    saved = config.save_local_settings({'connection_mode': 'local',
+        'remote_agent': str(tmp_path / 'agent.pyz'), 'remote_python': str(tmp_path / 'python'),
+        'remote_state_dir': str(tmp_path / 'shared-agent-state'), 'remote_runs_root': '/srv/runs'})
+    assert saved['connection_mode'] == 'local'
+    assert config.configured

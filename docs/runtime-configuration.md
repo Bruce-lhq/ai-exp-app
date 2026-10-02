@@ -20,6 +20,7 @@
 ```json
 {
   "ssh_alias": "gpu",
+  "connection_mode": "ssh",
   "remote_agent": "<REMOTE_APP_ROOT>/agent.pyz",
   "remote_root": "<REMOTE_APP_ROOT>",
   "remote_state_dir": "<REMOTE_APP_ROOT>/state",
@@ -35,6 +36,8 @@
 ```
 
 中性默认值是 `ssh_alias=gpu`、远端 Python `python3`、远端安装根目录 `.local/share/ai-exp-app`、远端浏览 `/`、本地历史浏览 `~/gpu_downloads/`。实验根目录初始为空，必须填写。数据目录可留空，由项目参数或命令自行管理。`remote_state_dir` 和 `remote_groups_root` 留空时分别由安装根目录和实验根目录派生。
+
+`connection_mode` 默认为 `ssh`。仅当网页后台就在 GPU 主机上运行时使用 `local`，通过 `remote_python` 子进程执行既有 `remote_agent`，不进行 SSH 自连接。此模式的 Python、代理与 `remote_state_dir` 都必须为绝对路径；状态目录必须复用既有代理目录。`ssh_alias` 在本机模式中是唯一主机标识，不支持其他主机的项目。配置与缓存属于后台主机，手机上的“本地目录”指 GPU 目录。详见 [手机接入](mobile-web.md)。
 
 本地缓存与数据目录保持既有独立布局：安装版缓存位于应用数据目录的 `gpu_downloads`，本地历史浏览起点用于导入其他目录，不改变已导入缓存位置。
 
