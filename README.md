@@ -80,7 +80,7 @@ ai-experiment history list
 
 ### iPhone 主屏幕 Web App
 
-源码版支持 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 VPN 与 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。已在 Ubuntu 20.04 GPU 上部署并验证，iPhone 真机验收仍待完成；现有 v0.4.1 发布包未包含此功能。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。
+源码版支持 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 VPN 与 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。已在 Ubuntu 20.04 GPU 上部署验证，并完成 iPhone 主屏幕 Web App 真机验收；现有 v0.4.1 发布包未包含此功能。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。
 
 首次用 Safari 打开隧道入口 `http://127.0.0.1:8765`，点“分享”→“添加到主屏幕”，保留 **AI Experiment** 名称和“作为网页 App 打开”（若显示）。之后开启 VPN、Termius 隧道，点击主屏幕图标即可打开独立工作台窗口。无需安装原生 iOS 包或开发者签名。
 
