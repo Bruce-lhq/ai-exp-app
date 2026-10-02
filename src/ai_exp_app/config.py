@@ -41,7 +41,9 @@ class Config:
     @property
     def configured(self):
         value = self.local_settings
-        return self.config_file.exists() and all(value[key] for key in ('ssh_alias', 'remote_agent', 'remote_python')) and str(value['remote_runs_root']).startswith('/')
+        runs_absolute = str(value['remote_runs_root']).startswith('/') or (
+            value['connection_mode'] == 'local' and Path(value['remote_runs_root']).is_absolute())
+        return self.config_file.exists() and all(value[key] for key in ('ssh_alias', 'remote_agent', 'remote_python')) and runs_absolute
 
     def save_local_settings(self, values):
         unknown = set(values) - set(LOCAL_DEFAULTS)
@@ -69,7 +71,8 @@ class Config:
         if document['remote_runs_root'] == '/':
             raise ValueError('实验根目录必须为专用目录，不能是 /')
         for key in ('remote_runs_root', 'remote_data_root', 'remote_projects_root', 'remote_import_root', 'remote_state_dir', 'remote_groups_root', 'remote_gpu_probe'):
-            if document[key] and not document[key].startswith('/'):
+            if document[key] and not (document[key].startswith('/') or (
+                    document['connection_mode'] == 'local' and Path(document[key]).is_absolute())):
                 raise ValueError(key + ' 必须为远端绝对目录')
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.config_file.with_suffix('.json.tmp')
