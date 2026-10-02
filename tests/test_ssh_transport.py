@@ -106,14 +106,15 @@ def test_rpc_decodes_real_utf8_process_output_under_non_utf8_default(monkeypatch
                                   'payload': {'name': '中文实验'}}) == {'name': '中文实验'}
 
 
-def test_local_agent_does_not_use_ssh_and_rejects_other_host(monkeypatch):
+def test_local_agent_does_not_use_ssh_and_rejects_other_host(tmp_path, monkeypatch):
     from ai_exp_app.transport.ssh import build_agent_argv
     monkeypatch.delenv('AI_EXP_REMOTE_AGENT', raising=False)
     settings = {'connection_mode': 'local', 'ssh_alias': 'gpu',
-                'remote_agent': '/srv/app with spaces/agent.pyz', 'remote_python': '/srv/env/python',
-                'remote_state_dir': '/srv/existing-state'}
-    assert build_agent_argv('gpu', settings) == ['/srv/env/python', settings['remote_agent'], 'rpc']
-    assert build_agent_argv('gpu', settings, ['-c', 'print(1)']) == ['/srv/env/python', '-c', 'print(1)']
+                'remote_agent': str(tmp_path / 'app with spaces' / 'agent.pyz'),
+                'remote_python': str(tmp_path / 'env' / 'python'),
+                'remote_state_dir': str(tmp_path / 'existing-state')}
+    assert build_agent_argv('gpu', settings) == [settings['remote_python'], settings['remote_agent'], 'rpc']
+    assert build_agent_argv('gpu', settings, ['-c', 'print(1)']) == [settings['remote_python'], '-c', 'print(1)']
     with pytest.raises(ValueError, match='主机别名'):
         build_agent_argv('different-host', settings)
 
