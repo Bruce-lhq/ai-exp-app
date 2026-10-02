@@ -2,6 +2,25 @@ import { test, expect } from '@playwright/test';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
+test('home screen metadata and icons are available without an API session', async ({ page, request }) => {
+  await page.route('**/api/**', route => route.fulfill({ json: [] }));
+  await page.goto('/');
+  await expect(page).toHaveTitle('AI Experiment');
+  await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute('content', 'yes');
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+  const response = await request.get('/manifest.webmanifest');
+  expect(response.ok()).toBe(true);
+  const manifest = await response.json();
+  expect(manifest).toMatchObject({ name: 'AI Experiment', short_name: 'AI Experiment', display: 'standalone', start_url: '/', scope: '/' });
+  const icons = [...manifest.icons, { src: '/icons/apple-touch-icon.png', sizes: '180x180' }];
+  for (const icon of icons) {
+    const image = await request.get(icon.src);
+    expect(image.headers()['content-type']).toContain('image/png');
+    const pixels = await image.body();
+    expect(`${pixels.readUInt32BE(16)}x${pixels.readUInt32BE(20)}`).toBe(icon.sizes);
+  }
+});
+
 test('phone navigation, readable curves and queue ordering preserve server revision', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
