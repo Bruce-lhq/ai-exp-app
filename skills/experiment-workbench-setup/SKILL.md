@@ -13,6 +13,8 @@ This skill ships in the workbench source repository. Its helpers require Python 
 
 Read the workbench README and list existing SSH Host aliases, the current workspace settings, and any code or experiment paths the user supplied. Read only relevant SSH configuration; do not display private keys, passwords, tokens, or the full environment.
 
+If the user wants phone access while their computer is off, read [references/mobile-browser.md](references/mobile-browser.md). Place the full web backend on the GPU and reuse its existing agent state; a desktop-local service or terminal-only agent is insufficient. Respect an instruction to finish local work first: prepare and test locally without connecting to SSH or deploying until that restriction is lifted.
+
 Ask the smallest useful question at the first missing milestone:
 
 | Missing information | Ask for |

@@ -22,7 +22,16 @@ def build_agent(output):
         raise RuntimeError('Remote agent sources are missing; use the matching source release')
     package = Path(spec.origin).parent
     with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr('__main__.py', 'from ai_exp_remote.rpc import main\nmain()\n')
+        archive.writestr('__main__.py', '\n'.join([
+            'import sys',
+            "if len(sys.argv)<2 or sys.argv[1]=='rpc':",
+            '    from ai_exp_remote.rpc import main; main()',
+            "elif sys.argv[1]=='daemon':",
+            '    from ai_exp_remote.runtime import daemon; daemon(sys.argv[2])',
+            "elif sys.argv[1]=='attempt':",
+            '    from ai_exp_remote.runner import execute_attempt; execute_attempt(sys.argv[2])',
+            "else: raise SystemExit('Unknown command')", '',
+        ]))
         for path in sorted(package.rglob('*.py')):
             archive.write(path, 'ai_exp_remote/' + path.relative_to(package).as_posix())
     return output
@@ -31,6 +40,8 @@ def build_agent(output):
 def install_agent(config=None, read_only=False):
     config = config or Config.load()
     local = config.local_settings
+    if local.get('connection_mode') == 'local':
+        raise ValueError('本机模式复用既有代理，请先在 SSH 模式部署代理，再填写其绝对路径和既有状态目录')
     root = local['remote_root']
     output = build_agent(config.data_dir / 'agent.pyz')
     digest = hashlib.sha256(output.read_bytes()).hexdigest()[:16]

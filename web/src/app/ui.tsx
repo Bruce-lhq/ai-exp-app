@@ -73,6 +73,7 @@ export function DirectoryPicker({
       title={source === "local" ? "选择本地目录" : "选择云端 GPU 目录"}
       close={close}
     >
+      {source === "local" && <p>这里浏览工作台后台所在电脑的目录；后台部署在 GPU 时，选择的是 GPU 文件夹，不是手机文件夹。</p>}
       <form
         className="row"
         onSubmit={(e) => {

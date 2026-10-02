@@ -72,9 +72,11 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Install browser
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
       - name: Run browser regressions
         run: npm run test:e2e
+      - name: Run iPhone viewport regressions in WebKit
+        run: npm run test:e2e -- --browser=webkit tests/mobile_workbench.spec.ts
       - name: Upload browser failure details
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

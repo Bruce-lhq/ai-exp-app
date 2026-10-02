@@ -7,6 +7,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DEFAULTS = {
+    'connection_mode': 'ssh',
     'ssh_alias': 'gpu',
     'remote_agent': '.local/share/ai-exp-app/agent.pyz',
     'remote_root': '.local/share/ai-exp-app',
@@ -50,6 +51,12 @@ class Config:
             raise ValueError('配置项必须为不含空字符的字符串')
         previous = self.local_settings
         document = {**previous, **{key: value.strip() for key, value in values.items()}}
+        if document['connection_mode'] not in {'ssh', 'local'}:
+            raise ValueError('连接方式必须为 ssh 或 local')
+        if document['connection_mode'] == 'local':
+            for key in ('remote_agent', 'remote_python', 'remote_state_dir'):
+                if not Path(document[key]).is_absolute():
+                    raise ValueError('本机代理模式的 ' + key + ' 必须为绝对路径')
         if document['remote_root'] != previous['remote_root'] and document['remote_agent'] == previous['remote_agent'] == previous['remote_root'].rstrip('/') + '/agent.pyz':
             document['remote_agent'] = document['remote_root'].rstrip('/') + '/agent.pyz'
         if document['remote_runs_root'] != previous['remote_runs_root'] and document['remote_import_root'] in {'/', previous['remote_runs_root'].rstrip('/') + '/'}:

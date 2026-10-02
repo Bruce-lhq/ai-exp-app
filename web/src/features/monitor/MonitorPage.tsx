@@ -48,6 +48,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [comparisons, setComparisons] = useState<string[]>([]);
   const [curveWarning, setCurveWarning] = useState("");
   const [curveLoading, setCurveLoading] = useState(true);
+  const [refreshError, setRefreshError] = useState("");
   async function refresh() {
     const [r, q] = await Promise.all([
       api("/api/runs", undefined, undefined, { background: true }),
@@ -57,6 +58,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     lastQueue = q;
     setRuns(lastRuns);
     setQueue(q);
+    setRefreshError("");
   }
   useEffect(() => {
     localStorage.setItem("monitor.title", title);
@@ -66,7 +68,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { await refresh(); } catch { /* Keep the last status during reconnect. */ }
+      try { await refresh(); } catch { setRefreshError("连接已中断，显示上次数据。请检查 VPN 与 SSH 隧道；恢复后自动重连。训练继续运行。"); }
       if (active) timer = setTimeout(poll, 3000);
     };
     void poll();
@@ -167,6 +169,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         </button>
         </div>
       </div>
+      {refreshError && <p className="warning" role="status">{refreshError}</p>}
       <section className="panel live-chart-panel">
         <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
         <div className="toolbar">
@@ -268,6 +271,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
               >
                 <GripVertical size={16} />
                 <span className="queue-position">{i + 1}</span>
+                <span className="mobile-queue-order">
+                  {[-1, 1].map((direction) => <button key={direction} aria-label={`${r.display_name}${direction < 0 ? "上移" : "下移"}`} disabled={i + direction < 0 || i + direction >= queue.runs.length} onClick={() => action(() => api("/api/queue/order", { run_ids: move<Run>(queue.runs, i, i + direction).map((item: Run) => item.id), revision: queue.revision }, "PUT"))}>{direction < 0 ? "↑" : "↓"}</button>)}
+                </span>
                 <strong>{r.display_name}</strong>
                 <span>{r.parameters?.runtime?.gpu_count || 1} GPU</span>
                 <button
