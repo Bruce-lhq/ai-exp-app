@@ -63,6 +63,8 @@ export function ParameterPage({
   const [resume, setResume] = useState<Parameters['resume']>();
   const generation = useRef(0);
   const [loadedProject, setLoadedProject] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
   const dirty = JSON.stringify(params) !== clean || Object.values(errors).some(Boolean);
   useEffect(() => {
     if (historical?.project_id && project && historical.project_id !== project) {
@@ -96,14 +98,18 @@ export function ParameterPage({
     return () => { alive = false; };
   }, [historical, busy, schema, loadedProject, project]);
   useEffect(() => {
+    let alive = true;
+    setLoadError("");
     api("/api/projects")
       .then((d) => {
+        if (!alive) return;
         const p = items(d);
         setProjects(p);
-        setProject(p.find((item) => item.is_default)?.id || p[0]?.id || "");
+        setProject((current) => p.some((item) => item.id === current) ? current : p.find((item) => item.is_default)?.id || p[0]?.id || "");
       })
-      .catch((e) => notify(e.message));
-  }, []);
+      .catch((e) => { if (alive) setLoadError(e.message); });
+    return () => { alive = false; };
+  }, [reload]);
   useEffect(() => {
     if (!project) return;
     setBusy(true);
@@ -126,13 +132,13 @@ export function ParameterPage({
       setLoadedProject(project);
       setCode(s.code?.ref || "");
       setWarning((s.warnings || []).map((x:any)=>x.message || x).join("；"));
-    })().catch(e => {if(alive) notify(e.message)}).finally(()=>{if(alive)setBusy(false)});
+    })().catch(e => {if(alive)setLoadError(e.message)}).finally(()=>{if(alive)setBusy(false)});
     api(`${base}/inspect`, {}, undefined, { background: true }).then((c) => {
       if (alive && generation.current === requestGeneration)
         setRefs((c.branches || c.refs || []).map((x: any) => typeof x === "string" ? x : x.name));
     }).catch(() => {});
     return () => {alive = false};
-  }, [project]);
+  }, [project, reload]);
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     try {
@@ -208,7 +214,7 @@ export function ParameterPage({
           .toLowerCase()
           .includes(filter.toLowerCase()),
     );
-  const invalid = Object.values(errors).some(Boolean);
+  const invalid = loadedProject !== project || !!loadError || Object.values(errors).some(Boolean);
   return (
     <>
       <div className="page-heading">
@@ -222,6 +228,9 @@ export function ParameterPage({
           添加云端项目
         </button>
       </div>
+      {loadError && <div className="warning" role="alert">
+        {loadError} <button onClick={() => { setLoadError(""); setReload((value) => value + 1); }}>重新加载配置</button>
+      </div>}
       <section className="panel project-bar">
         <label>
           常用项目

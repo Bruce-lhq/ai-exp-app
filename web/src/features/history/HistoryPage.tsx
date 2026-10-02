@@ -23,18 +23,22 @@ export function HistoryPage({
     [deletion, setDeletion] = useState<any>(null),
     [selected, setSelected] = useState<string[]>([]);
   const [settings, setSettings] = useState({ remote_import_root: "/", local_import_root: "~/gpu_downloads/" });
+  const [loadError, setLoadError] = useState("");
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     api("/api/settings/local").then((value: any) => { if (value.local_settings) setSettings(value.local_settings); }).catch((e) => notify(e.message));
   }, [source]);
   async function refresh() {
     const next = items(await api("/api/history"));
     setHistory(next);
+    setLoaded(true);
+    setLoadError("");
     const available = new Set(next.map((item: any) => item.id));
     setSelected((current) => current.filter((id) => available.has(id)));
   }
   useEffect(() => {
-    refresh().catch((e) => notify(e.message));
-    const t = setInterval(() => refresh().catch(() => {}), 10000);
+    refresh().catch((e) => setLoadError(e.message));
+    const t = setInterval(() => refresh().catch((e) => setLoadError(e.message)), 10000);
     return () => clearInterval(t);
   }, []);
   async function action(fn: () => Promise<unknown>) {
@@ -55,6 +59,7 @@ export function HistoryPage({
   const allShownSelected = shown.length > 0 && shown.every((h) => selected.includes(h.id));
   return (
     <>
+      {loadError && <div className="warning" role="alert">{loadError} 已显示的数据会保留，连接恢复后自动重试。</div>}
       <div className="page-heading">
         <div>
           <span className="eyebrow">EXPERIMENT ARCHIVE</span>
@@ -118,7 +123,9 @@ export function HistoryPage({
             {allShownSelected ? "取消全选" : "全选历史"}
           </button>
         </div>
-        {!shown.length ? (
+        {!loaded ? (
+          <Empty>{loadError ? "历史数据尚未加载，请恢复连接后重试。" : "正在读取已有历史…"}</Empty>
+        ) : !shown.length ? (
           <Empty>
             <Archive size={30} />
             <h3>还没有历史实验</h3>
