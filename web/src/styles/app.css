@@ -2,6 +2,7 @@
   color-scheme: light;
   --background: #f2f5f9;
   --surface: #ffffff;
+  --logo-background: #ffffff;
   --sidebar: #fcfdff;
   --subsurface: #fafbfd;
   --topbar: #ffffffb3;
@@ -193,6 +194,7 @@ small {
   height: 37px;
 }
 .brand img {
+  background: var(--logo-background);
   display: block;
   border-radius: 9px;
 }
@@ -1287,6 +1289,7 @@ details .check {
   color-scheme: dark;
   --background: #101622;
   --surface: #1b2433;
+  --logo-background: #000000;
   --sidebar: #151d2b;
   --subsurface: #202b3c;
   --topbar: #151d2be6;

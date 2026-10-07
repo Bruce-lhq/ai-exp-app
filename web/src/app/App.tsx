@@ -85,7 +85,7 @@ export default function App() {
           }}
         >
           <span>
-            <img src="/icons/icon-192.png" alt="AI Experiment" width="37" height="37" />
+            <img src="/icons/logo-transparent.png" alt="AI Experiment" width="37" height="37" />
           </span>
           <div>
             实验工作台<small>AI EXPERIMENTS</small>

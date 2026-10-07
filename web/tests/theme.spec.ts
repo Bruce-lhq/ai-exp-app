@@ -17,6 +17,7 @@ test('system changes apply only in system mode; explicit choice persists after r
   await page.goto('/');
   await expect(page.getByLabel('外观模式')).toHaveValue('system');
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  expect(await page.locator('.brand img').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(0, 0, 0)');
   await page.getByRole('button',{name:'工作空间设置',exact:true}).click();
   expect(await page.locator('.modal').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(27, 36, 51)');
   await page.getByRole('button',{name:'关闭',exact:true}).click();
@@ -24,6 +25,7 @@ test('system changes apply only in system mode; explicit choice persists after r
   await page.reload();
   await expect(page.getByLabel('外观模式')).toHaveValue('light');
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  expect(await page.locator('.brand img').evaluate(el=>getComputedStyle(el).backgroundColor)).toBe('rgb(255, 255, 255)');
   await page.emulateMedia({colorScheme:'dark'});
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   await page.getByLabel('外观模式').selectOption('system');
