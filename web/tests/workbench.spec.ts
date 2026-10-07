@@ -59,7 +59,7 @@ test('slow live curves do not overlap or restart when status and log update', as
  await page.goto('/');
  await expect.poll(() => curveRequests).toBe(1);
  const statusBefore = statusRequests;
- await page.getByRole('button', {name: /慢连接实验/}).click();
+ await page.getByRole('button', {name: /^慢连接实验/}).click();
  await expect(page.getByText('latest log', {exact: true})).toBeVisible();
  await expect.poll(() => statusRequests, {timeout: 6000}).toBeGreaterThan(statusBefore);
  expect(curveRequests).toBe(1);

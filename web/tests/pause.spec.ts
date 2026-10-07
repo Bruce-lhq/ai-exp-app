@@ -15,7 +15,7 @@ test('external run must be adopted before confirmed pause', async ({ page }) => 
     await route.fulfill({ json:body });
   });
   await page.goto('/');
-  await page.getByRole('button', { name:/终端实验/ }).click();
+  await page.getByRole('button', { name:/^终端实验/ }).click();
   await expect(page.getByRole('button', { name:'暂停实验', exact:true })).toHaveCount(0);
   await page.getByRole('button', { name:'接管进程', exact:true }).click();
   await page.getByRole('button', { name:'暂停实验', exact:true }).click();

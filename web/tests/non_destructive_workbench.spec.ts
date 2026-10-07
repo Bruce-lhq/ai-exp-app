@@ -169,7 +169,7 @@ test("history, notification, chart and table controls complete without a blank s
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "运行监控" })).toBeVisible();
   await expect(page.getByText("运行备注名", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /运行备注名/ }).click();
+  await page.getByRole("button", { name: /^运行备注名/ }).click();
   await expect(page.getByText("训练日志内容", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "实验通知" }).click();
   await page.getByRole("button", { name: /实验完成/ }).click();
