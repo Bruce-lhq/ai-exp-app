@@ -101,11 +101,12 @@ iOS 回收或强制关闭 iSH 后需要重建隧道；SSH 心跳不能代替后�
 
 ### 从源码运行
 
-要求 Python 3.12+（含 venv 和 pip）、Node.js 22 和 npm；不需要安装 uv。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。
+以下命令安装发布版 `v0.5.0`；`main` 是下一轮开发版本，开发者可跳过 checkout。要求 Python 3.12+（含 venv 和 pip）、Node.js 22 和 npm；不需要安装 uv。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。
 
 ```bash
 git clone https://github.com/Bruce-lhq/ai-exp-app.git
 cd ai-exp-app
+git checkout v0.5.0
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.lock
 .venv/bin/python -m pip install --no-deps -e .
