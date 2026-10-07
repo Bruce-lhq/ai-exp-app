@@ -71,7 +71,7 @@ export async function api<T = any>(
     if (response.status === 204) return undefined as T;
     return await response.json();
   } catch (error) {
-    if (timedOut) throw new Error("连接超时，数据尚未加载。请检查 VPN 和 Termius 转发，恢复连接后重试。");
+    if (timedOut) throw new Error("连接超时，数据尚未加载。请检查 网络和 SSH 转发，恢复连接后重试。");
     throw error;
   } finally {
     clearTimeout(timer);

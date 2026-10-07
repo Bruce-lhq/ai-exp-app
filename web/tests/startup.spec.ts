@@ -17,6 +17,6 @@ test('stalled application script keeps a loading message and explains recovery',
     await page.goto('/', { waitUntil: 'commit' });
     await expect(page.getByRole('status')).toHaveText('正在加载工作台…');
     await page.clock.fastForward(10001);
-    await expect(page.getByRole('status')).toContainText('请检查 VPN 和 Termius 转发');
+    await expect(page.getByRole('status')).toContainText('请检查网络和 SSH 转发');
   } finally { finish(); }
 });

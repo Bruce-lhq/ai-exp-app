@@ -4,7 +4,6 @@ import {
   Activity,
   Archive,
   ChartNoAxesCombined,
-  FlaskConical,
   Check,
   X,
   Bell,
@@ -84,7 +83,7 @@ export default function App() {
           }}
         >
           <span>
-            <FlaskConical size={23} />
+            <img src="/icons/icon-192.png" alt="AI Experiment" width="37" height="37" />
           </span>
           <div>
             实验工作台<small>AI EXPERIMENTS</small>

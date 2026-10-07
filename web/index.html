@@ -9,13 +9,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/icons/app-icon.svg" />
+    <link rel="icon" type="image/png" href="/icons/favicon.png" />
     <title>AI Experiment</title>
     <script>
       (function () {
         function showFailure() {
           var message = document.getElementById("startup-message");
-          if (message) message.textContent = "页面尚未加载完成。请检查 VPN 和 Termius 转发，重新连接后点击重试。";
+          if (message) message.textContent = "页面尚未加载完成。请检查网络和 SSH 转发，重新连接后点击重试。";
         }
         window.addEventListener("error", function (event) {
           if (event.message || (event.target && event.target.tagName === "SCRIPT")) showFailure();

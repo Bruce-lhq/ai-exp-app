@@ -41,19 +41,9 @@ def write_licenses(resources):
 
 
 def make_icons(directory):
-    from PIL import Image,ImageDraw
+    from PIL import Image
     directory.mkdir(parents=True,exist_ok=True)
-    image=Image.new('RGBA',(1024,1024))
-    draw=ImageDraw.Draw(image)
-    draw.rounded_rectangle((48,48,976,976),radius=200,fill=(31,66,143))
-    points=[]
-    for index in range(201):
-        t=index/200;u=1-t
-        points.append((u**3*230+3*u*u*t*320+3*u*t*t*510+t**3*790,
-                       u**3*294+3*u*u*t*814+3*u*t*t*544+t**3*724))
-    draw.line(points,fill='white',width=48)
-    for x,y in [(230,294),(470,597),(790,724)]:
-        draw.ellipse((x-45,y-45,x+45,y+45),fill=(117,214,201))
+    image=Image.open(ROOT/'assets/aiexp-logo.jpg').convert('RGBA')
     image.resize((512,512),Image.Resampling.LANCZOS).save(directory/'AppIcon.png')
     image.save(directory/'AppIcon.ico',sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
 

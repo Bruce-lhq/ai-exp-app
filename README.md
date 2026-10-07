@@ -1,5 +1,7 @@
 # AI Experiment · 实验工作台
 
+<img src="assets/aiexp-logo.jpg" alt="AI Experiment logo" width="96" />
+
 [![CI](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml/badge.svg)](https://github.com/Bruce-lhq/ai-exp-app/actions/workflows/ci.yml)
 
 通过 SSH 管理训练任务，在本地查看日志、曲线和对比表。提供 macOS、Windows、Linux 桌面应用、CLI 与 localhost 网页入口；关闭工作台不影响远端任务和队列。绘图与列表读取本地缓存，可离线使用。
@@ -80,9 +82,11 @@ ai-experiment history list
 
 ### iPhone 主屏幕 Web App
 
-源码版支持 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 VPN 与 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。已在 Ubuntu 20.04 GPU 上部署验证，并完成 iPhone 主屏幕 Web App 真机验收；现有 v0.4.1 发布包未包含此功能。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。
+源码版支持 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。已在 Ubuntu 20.04 GPU 上部署验证，并完成 iPhone 主屏幕 Web App 真机验收；现有 v0.4.1 发布包未包含此功能。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。
 
-首次用 Safari 打开隧道入口 `http://127.0.0.1:8765`，点“分享”→“添加到主屏幕”，保留 **AI Experiment** 名称和“作为网页 App 打开”（若显示）。之后开启 VPN、Termius 隧道，点击主屏幕图标即可打开独立工作台窗口。无需安装原生 iOS 包或开发者签名。
+手机推荐安装 [iSH](https://ish.app/)，安装 OpenSSH 并按[手机接入说明](docs/mobile-web.md#3-iphone-入口)设置标准 SSH 本地转发；所需网络须由用户事先接通。
+
+首次用 Safari 打开隧道入口 `http://127.0.0.1:8765`，点“分享”→“添加到主屏幕”，保留 **AI Experiment** 名称和“作为网页 App 打开”（若显示）。之后在 iSH 启动 SSH 隧道，点击主屏幕图标即可打开独立工作台窗口。无需安装原生 iOS 包或开发者签名。
 
 ### 从源码运行
 

@@ -172,10 +172,12 @@ small {
   display: grid;
   place-items: center;
   color: white;
-  background: var(--blue);
   width: 37px;
-  height: 42px;
-  border-radius: 12px 12px 12px 3px;
+  height: 37px;
+}
+.brand img {
+  display: block;
+  border-radius: 9px;
 }
 .brand small {
   display: block;

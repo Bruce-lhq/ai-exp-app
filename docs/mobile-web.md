@@ -1,6 +1,6 @@
 # iPhone 浏览器与 GPU 常驻工作台
 
-这个入口让网页、后台和缓存运行在 GPU 主机。Mac 可以关机；手机只需要能够独立访问 GPU 的 VPN 和 SSH 隧道。它复用同一实验代理、状态和队列，不在手机或 GPU 上另建训练调度器。桌面版仍默认通过 SSH 使用。
+这个入口让网页、后台和缓存运行在 GPU 主机。Mac 可以关机；手机只需要能够独立访问 GPU 的网络和 SSH 隧道。它复用同一实验代理、状态和队列，不在手机或 GPU 上另建训练调度器。桌面版仍默认通过 SSH 使用。
 
 已在 Ubuntu 20.04 x86_64 GPU 主机上使用独立 Python 3.13 环境部署，并验证历史曲线、表格、PNG 下载、隔离小实验和后台自动重启。手机尺寸的 WebKit 测试已通过，iPhone 主屏幕 Web App 真机验收也已完成。
 
@@ -89,27 +89,63 @@ WantedBy=multi-user.target
 
 ## 3. iPhone 入口
 
-手机 VPN 能访问 GPU 后，在 Termius 创建 Local Port Forwarding：
+先确认手机网络能访问 GPU 的 SSH 地址。安装 [iSH](https://ish.app/)，在 iSH 执行：
 
-| 字段 | 值 |
-| --- | --- |
-| Local Port | `8765` |
-| Bind Address | `127.0.0.1` |
-| Intermediate Host | 你的 GPU SSH 主机、端口和用户 |
-| Destination Address | `127.0.0.1` |
-| Destination Port | `8765` |
+```sh
+apk update
+apk add openssh-client curl
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+```
 
-启动隧道后在 Safari 打开 `http://127.0.0.1:8765`。SSH 认证由 Termius 管理，工作台不保存 SSH 密码，不需要 Mac 钥匙串。SSH 隧道加密传输网页/API；不开放 GPU 公网 HTTP 端口。
+将自己的连接信息写入 `~/.ssh/config`（以下为占位符）：
+
+```sshconfig
+Host gpu
+    HostName gpu.example.com
+    User your-user
+    Port 22
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+```
+
+首次连接确认主机指纹，在终端输入密码或配置自己的 SSH 密钥；不要把密码写入脚本。然后启动转发：
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8765:127.0.0.1:8765 gpu
+```
+
+该命令保持运行是正常现象。另开 iSH 终端可以检查服务：
+
+```sh
+curl --max-time 10 http://127.0.0.1:8765/api/health
+```
+
+出现工作台 JSON 后，在 Safari 打开 `http://127.0.0.1:8765`。认证由手机 OpenSSH 管理，工作台不保存 SSH 密码，不依赖 Mac 钥匙串；GPU 服务仍只监听回环地址。
+
+配置密钥并确认无交互认证成功后，可用以下命令后台启动；每次启动前先检查健康接口，避免重复转发：
+
+```sh
+curl -fsS --max-time 3 http://127.0.0.1:8765/api/health || ssh -fN -o BatchMode=yes -o ExitOnForwardFailure=yes -L 127.0.0.1:8765:127.0.0.1:8765 gpu
+```
+
+iSH 的后台运行受 iOS 限制。[iSH 官方说明](https://github.com/ish-app/ish/wiki/Running-in-background)提供通过位置设备保持后台运行的方法；若选择使用，需要授予位置权限：
+
+```sh
+cat /dev/location > /dev/null &
+```
+
+这不是 SSH 心跳功能，也不保证 iSH 被强制关闭后仍可连接。网络环境由用户自行配置，此说明仅负责标准 SSH 转发。
 
 ### 添加到 iPhone 主屏幕
 
-首次在 Safari 打开上述入口，点“分享”→“添加到主屏幕”，名称保留 **AI Experiment**。如果系统提供“作为网页 App 打开”选项，请保持开启。之后开启 VPN 和 Termius 隧道，直接点击主屏幕的 AI Experiment 图标即可；工作台以独立窗口打开。
+首次在 Safari 打开上述入口，点“分享”→“添加到主屏幕”，名称保留 **AI Experiment**。如果系统提供“作为网页 App 打开”选项，请保持开启。之后在 iSH 启动 SSH 隧道，直接点击主屏幕的 AI Experiment 图标即可；工作台以独立窗口打开。
 
 网页包含 standalone manifest、192/512 图标、180像素 Apple touch icon 和状态栏颜色；无需 Xcode 或 Apple 开发者签名。添加后名称或图标未更新时，可移除旧主屏幕入口，再从刷新后的页面重新添加。这一版不缓存服务/API，也不提供断网操控；下载与分享使用 iOS WebKit 的系统行为。
 
 手机页面提供四区导航、触摸按钮和队列上下移，表格横向滚动，曲线在手机上单独显示可换行图例。桌面显示与 PNG 导出保留原图样式。暂停/停止仍需确认，严格续跑仍需项目真实校验。后台断线时保留已显示状态、给出恢复提示；恢复隧道后自动重连，刷新页面重新取得登录会话。
 
-关闭隧道或 iOS 回收 Termius 会影响访问，不会停止 GPU 实验。隧道的后台存活时间取决于 iOS 与 SSH 客户端的运行状态；此版不保证系统推送、离线操控或无需隧道的公网访问。
+关闭隧道或 iOS 回收 iSH 会影响访问，不会停止 GPU 实验。隧道的后台存活时间取决于 iOS 与 SSH 客户端的运行状态；此版不保证系统推送、离线操控或无需隧道的公网访问。
 
 如果页面只在重新启动端口转发后短暂可用，应检查 SSH 客户端切到后台后的运行状态。SSH Keep Alive 是连接心跳间隔，不能代替 iOS 后台运行支持。验收需包括切换到 Safari／主屏幕 Web App 后持续访问数分钟，不能只确认首次打开成功。页面启动时会显示加载提示；脚本加载中断或长时间未完成时提供重新加载入口。它不能自动重启手机上的 SSH 转发。
 
