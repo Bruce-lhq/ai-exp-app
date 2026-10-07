@@ -2,7 +2,7 @@
 
 这个入口让网页、后台和缓存运行在 GPU 主机。Mac 可以关机；手机只需要能够独立访问 GPU 的网络和 SSH 隧道。它复用同一实验代理、状态和队列，不在手机或 GPU 上另建训练调度器。桌面版仍默认通过 SSH 使用。
 
-已在 Ubuntu 20.04 x86_64 GPU 主机上使用独立 Python 3.13 环境部署，并验证历史曲线、表格、PNG 下载、隔离小实验和后台自动重启。手机尺寸的 WebKit 测试已通过，iPhone 主屏幕 Web App 真机验收也已完成。
+已在 Ubuntu 20.04 x86_64 GPU 主机上使用独立 Python 3.13 环境部署，并验证历史曲线、表格、PNG 下载、隔离小实验和后台自动重启。手机尺寸的 WebKit 测试已通过，iSH SSH 隧道与 iPhone 主屏幕 Web App 的真机验收也已完成。
 
 ## 1. 准备后台
 
@@ -16,17 +16,17 @@ npm --prefix web run build
 .venv/bin/python scripts/build_gpu_web.py
 ```
 
-生成 `dist/releases/AI-Experiment-GPU-Web.tar.gz`，包含 Python 源码、前端和锁定依赖，不包含任何配置、数据库、实验、缓存或认证信息。它没有内置 Python；需在 GPU 用专用环境安装。上传及解压到专用目录之后，在 GPU 上执行（uv 需已安装；Python3.12若不存在需单独准备）：
+生成 `dist/releases/AI-Experiment-GPU-Web.tar.gz`，包含 Python 源码、前端和锁定依赖，不包含任何配置、数据库、实验、缓存或认证信息。它没有内置 Python；需在 GPU 用专用环境安装。上传及解压到专用目录之后，在 GPU 上执行（需 Python 3.12+、venv 和 pip；无需 uv，缺少 Python 时单独准备）：
 
 ```bash
 cd /your_exp/mobile-workbench/ai-experiment-web
-uv venv --python 3.12
-uv pip sync --python .venv/bin/python requirements.lock
-uv pip install --python .venv/bin/python --no-deps -e .
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
 mkdir -p workspace
 ```
 
-所有路径均为占位符，需要替换。GPU 无网络时由接入 Agent 准备匹配 Ubuntu/Python/CPU 架构的运行时和依赖 wheel；不能上传 Mac 虚拟环境直接使用。
+示例使用 `python3.12`；若已有 Python 3.13 或更新版本，改用对应解释器创建环境。不要直接使用 GPU 上可能仍为 3.8 的系统 `python3`。所有路径均为占位符，需要替换。GPU 无网络时由接入 Agent 准备匹配 Ubuntu/Python/CPU 架构的运行时和依赖 wheel；不能上传 Mac 虚拟环境直接使用。
 
 ## 2. 复用现有代理
 
@@ -88,6 +88,8 @@ WantedBy=multi-user.target
 先用 `service start` 验收后，需先 `service stop --yes` 再交给 supervisor 管理同一工作空间，避免重复实例。停止网页后台不会停止代理队列或训练。
 
 ## 3. iPhone 入口
+
+快速安装步骤已直接列在 [README](../README.md#iphone-主屏幕-web-app)。以下是 SSH 别名及可选配置的详细说明。
 
 先确认手机网络能访问 GPU 的 SSH 地址。安装 [iSH](https://ish.app/)，在 iSH 执行：
 

@@ -83,28 +83,45 @@ ai-experiment history list
 
 ### iPhone 主屏幕 Web App
 
-源码版支持 GPU 本机代理模式和手机布局：网页后台运行在 GPU，iPhone 使用 SSH 本地端口转发访问，Mac 无需在线。仍只监听回环地址，并复用既有实验代理的状态和队列。已在 Ubuntu 20.04 GPU 上部署验证，并完成 iPhone 主屏幕 Web App 真机验收；现有 v0.4.1 发布包未包含此功能。部署步骤、缓存位置与限制见 [手机接入说明](docs/mobile-web.md)。
+网页后台运行在 GPU，手机通过 iSH 的 SSH 隧道访问，Mac 无需在线。**iSH → iPhone 主屏幕 Web App 的真机验收已完成。**手机入口从源码部署；桌面安装包不会自动在 GPU 部署网页后台。
 
-手机推荐安装 [iSH](https://ish.app/)，安装 OpenSSH 并按[手机接入说明](docs/mobile-web.md#3-iphone-入口)设置标准 SSH 本地转发；所需网络须由用户事先接通。
+先让接入 Agent 按 [GPU 后台部署说明](docs/mobile-web.md#1-准备后台)准备常驻服务，确认 GPU 上 `http://127.0.0.1:8765/api/health` 返回工作台 JSON。手机需能独立访问 GPU 的 SSH 地址。
 
-首次用 Safari 打开隧道入口 `http://127.0.0.1:8765`，点“分享”→“添加到主屏幕”，保留 **AI Experiment** 名称和“作为网页 App 打开”（若显示）。之后在 iSH 启动 SSH 隧道，点击主屏幕图标即可打开独立工作台窗口。无需安装原生 iOS 包或开发者签名。
+安装 [iSH](https://ish.app/)，在其中执行下面几行。把 `your-user@gpu.example.com` 和 `22` 换成自己的 SSH 用户、主机和端口：
+
+```sh
+apk update
+apk add openssh-client curl
+ssh -fN -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 127.0.0.1:8765:127.0.0.1:8765 -p 22 your-user@gpu.example.com
+curl --max-time 10 http://127.0.0.1:8765/api/health
+```
+
+首次连接核对主机指纹，按提示输入密码或使用自己的 SSH 密钥；认证完成后隧道转入后台。看到工作台 JSON 后，用 Safari 打开 `http://127.0.0.1:8765`，点“分享”→“添加到主屏幕”，名称保留 **AI Experiment**，“作为网页 App 打开”（若显示）保持开启。以后先在 iSH 建立隧道，再点主屏幕图标；无需原生 iOS 安装包或开发者签名。隧道已正常工作时不必重复执行启动命令。
+
+如需切换到工作台后保持 iSH 后台运行，可按 [iSH 官方说明](https://github.com/ish-app/ish/wiki/Running-in-background)授予位置权限，再执行：
+
+```sh
+cat /dev/location > /dev/null &
+```
+
+iOS 回收或强制关闭 iSH 后需要重建隧道；SSH 心跳不能代替后台运行。GPU 实验不受手机断线影响。手机的历史缓存和配置保存在 GPU，与 Mac 的缓存独立；数据位置及故障排查见 [详细说明](docs/mobile-web.md#4-数据位置与人工验收)。
 
 ### 从源码运行
 
-要求 Python 3.12+、[uv](https://docs.astral.sh/uv/getting-started/installation/)、Node.js 22 和 npm。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。
+要求 Python 3.12+（含 venv 和 pip）、Node.js 22 和 npm；不需要安装 uv。在专用项目目录安装，始终显式指定虚拟环境，避免修改其他 Python 环境。
 
 ```bash
 git clone https://github.com/Bruce-lhq/ai-exp-app.git
 cd ai-exp-app
-uv venv --python 3.12
-uv pip sync --python .venv/bin/python requirements.lock
-uv pip install --python .venv/bin/python --no-deps -e .
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install --no-deps -e .
 npm --prefix web ci
 npm --prefix web run build
 .venv/bin/ai-experiment service start
 ```
 
-Windows 将上述虚拟环境路径分别换成 `.venv/Scripts/python.exe`、`.venv/Scripts/ai-experiment.exe`。Windows PowerShell 可用正斜杠路径。
+Windows 用 `py -3.12 -m venv .venv` 创建环境，并将上述虚拟环境路径分别换成 `.venv/Scripts/python.exe`、`.venv/Scripts/ai-experiment.exe`。Windows PowerShell 可用正斜杠路径。
 
 新工作空间使用系统应用数据目录；已有源码或应用工作空间会保留。要隔离开发环境，在启动前指定 `AI_EXP_DATA_DIR` 与 `AI_EXP_CONFIG_FILE`，见 [运行时配置](docs/runtime-configuration.md)。前端开发可另开终端运行 `npm --prefix web run dev`。
 
@@ -209,7 +226,9 @@ Mac WebKit / Windows Edge / Linux Qt / 浏览器
 | `scripts/` | 跨平台构建、安装包验收与工作空间迁移 |
 | `tests/`、`web/tests/` | 后端、前端与浏览器回归 |
 
-远端保存训练文件与队列；本地保存项目、参数组、历史索引、图表／表格偏好和缓存。断线保留缓存，重连补同步。提交时固定代码与参数，后续编辑不改变已提交任务。
+手机模式将前端静态文件、FastAPI 与缓存放在 GPU，通过手机 SSH 隧道访问；后台在 GPU 本机调用同一远端代理，无需绕回 Mac。
+
+远端保存训练文件与队列；后台所在主机保存项目、参数组、历史索引、图表／表格偏好和缓存。断线保留缓存，重连补同步。提交时固定代码与参数，后续编辑不改变已提交任务。
 
 本地 API 仅供本机使用，具备会话、同源与原生应用令牌检查。项目命令和可选 checkpoint 验证器是用户选择的可执行代码；只接入可信项目。工作台不提供不可信代码沙箱或多人公网服务。
 
@@ -233,19 +252,19 @@ CI 使用临时目录、模拟远端接口和小型普通命令测试，不需�
 在目标系统／架构上构建，不能在 Mac 上冻结 Windows 或 Linux 可执行文件。先安装对应桌面依赖和 PyInstaller：
 
 ```bash
-uv pip sync --python .venv/bin/python requirements-desktop.lock
-uv pip install --python .venv/bin/python --no-deps -e .
-uv pip install --python .venv/bin/python PyInstaller==6.22.3
+.venv/bin/python -m pip install -r requirements-desktop.lock
+.venv/bin/python -m pip install --no-deps -e .
+.venv/bin/python -m pip install PyInstaller==6.22.3
 ```
 
 Mac 安装 Xcode Command Line Tools 后运行 `.venv/bin/python scripts/build_macos.py`；Windows 安装 NSIS 后运行 `.venv/Scripts/python.exe scripts/build_desktop.py`；Ubuntu 安装包流程见 [发布说明](docs/releasing.md)。产物位于 `dist/releases/`，发布到 GitHub Releases，不进入 Git。
 
 ## Future work
 
-- 应用内自动检查 SSH、上传代码与安装代理；当前通过接入 SKILL 完成。
+- 应用内一站式 SSH 诊断、代码上传与代理安装；当前完整接入流程通过 SKILL 完成。
 - TensorBoard／其他指标存储的原生接入；当前使用标准 JSONL 或转换脚本。
-- 更广泛的外部进程接管和其他 GPU／调度系统支持。
-- Developer ID 签名与公证、Windows 代码签名，以及 Windows 11／Linux 桌面人工验收与更多系统覆盖。
+- 更广泛的外部进程接管，以及更多设备／调度系统的开箱即用适配；当前可声明训练命令并配置设备探测。
+- Developer ID 签名与公证、Windows 代码签名，以及 Windows 11／Linux 桌面人工验收及更多发行版覆盖。
 - 按项目能力在暂停前保存 checkpoint，展示恢复点与可能损失的进度。
 - 多 seed／参数扫描、分组统计与工作空间备份。
 

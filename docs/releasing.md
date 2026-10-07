@@ -1,6 +1,6 @@
 # 发布说明
 
-Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校验值通过 GitHub Releases 分发。工作空间数据库、缓存、checkpoint、`config.local.json`、内部设计与构建产物均不提交。当前版本为 `0.4.1`，预览版。
+Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校验值通过 GitHub Releases 分发。工作空间数据库、缓存、checkpoint、`config.local.json`、内部设计与构建产物均不提交。下载版本以 GitHub Releases 为准；源码开发版本以 `pyproject.toml` 为准。
 
 ## 构建与自动验证
 
@@ -26,15 +26,15 @@ Git 只收源码、公开文档与测试。桌面安装包、CLI 压缩包及校
 在干净检出与专用虚拟环境执行，始终显式指定目标解释器：
 
 ```bash
-uv venv --python 3.12
-uv pip sync --python .venv/bin/python requirements-desktop.lock
-uv pip install --python .venv/bin/python --no-deps -e .
-uv pip install --python .venv/bin/python PyInstaller==6.22.3
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-desktop.lock
+.venv/bin/python -m pip install --no-deps -e .
+.venv/bin/python -m pip install PyInstaller==6.22.3
 npm --prefix web ci
 npm --prefix web run build
 ```
 
-Windows 将虚拟环境路径改为 `.venv/Scripts/python.exe`。目标系统命令：
+Windows 用 `py -3.12 -m venv .venv` 创建环境，将虚拟环境路径改为 `.venv/Scripts/python.exe`。目标系统命令：
 
 - Mac：安装 Xcode Command Line Tools，运行 `.venv/bin/python scripts/build_macos.py --arch arm64`；Intel 用 `x86_64` 并在 Intel runner／Python 构建。
 - Windows：安装 NSIS，运行 `.venv/Scripts/python.exe scripts/build_desktop.py`。
@@ -61,7 +61,7 @@ Mac 当前 ad-hoc 签名，未做 Developer ID 公证；Windows 安装器未做�
 
 ## 中性构建环境
 
-仅移动源码目录不足以清除 Python 构建配置中的个人路径。公开本机构建使用新建中性临时目录、干净检出与中性 Python：
+仅移动源码目录不足以清除 Python 构建配置中的个人路径。公开本机构建使用新建中性临时目录、干净检出与中性 Python。可将 Python 安装在中性目录，再用该解释器创建虚拟环境；下面是使用可选开发工具 uv 的一种方式（用户安装／运行不需要 uv）：
 
 ```bash
 uv python install --install-dir /tmp/ai-exp-public-python --no-bin 3.12.12
