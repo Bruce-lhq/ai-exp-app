@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-exp-app"
-version = "0.6.0.dev0"
+dynamic = ["version"]
 description = "Local experiment workbench for SSH GPU training, cached charts and comparison tables"
 readme = "README.md"
 license = "MIT"
@@ -25,3 +25,6 @@ where = ["src", "remote"]
 pythonpath = ["src", "remote"]
 testpaths = ["tests"]
 markers = ["remote: isolated GPU host integration"]
+
+[tool.setuptools.dynamic]
+version = {attr = "ai_exp_app.__version__"}

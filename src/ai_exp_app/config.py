@@ -20,6 +20,8 @@ LOCAL_DEFAULTS = {
     'remote_groups_root': '',
     'remote_import_root': '/',
     'local_import_root': '~/gpu_downloads/',
+    'workspace_sync_mode': 'off',
+    'workspace_sync_port': '8765',
 }
 
 
@@ -53,6 +55,10 @@ class Config:
             raise ValueError('配置项必须为不含空字符的字符串')
         previous = self.local_settings
         document = {**previous, **{key: value.strip() for key, value in values.items()}}
+        if document['workspace_sync_mode'] not in {'off', 'hub', 'client'}:
+            raise ValueError('同步模式必须为 off、hub 或 client')
+        if not document['workspace_sync_port'].isdigit() or not 1 <= int(document['workspace_sync_port']) <= 65535:
+            raise ValueError('同步端口必须在 1–65535 之间')
         if document['connection_mode'] not in {'ssh', 'local'}:
             raise ValueError('连接方式必须为 ssh 或 local')
         if document['connection_mode'] == 'local':

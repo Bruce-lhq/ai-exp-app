@@ -38,8 +38,10 @@ export function HistoryPage({
   }
   useEffect(() => {
     refresh().catch((e) => setLoadError(e.message));
-    const t = setInterval(() => refresh().catch((e) => setLoadError(e.message)), 10000);
-    return () => clearInterval(t);
+    const synced = () => refresh().catch((e) => setLoadError(e.message));
+    const t = setInterval(synced, 10000);
+    window.addEventListener("workspace-sync-changed", synced);
+    return () => { clearInterval(t); window.removeEventListener("workspace-sync-changed", synced); };
   }, []);
   async function action(fn: () => Promise<unknown>) {
     try {

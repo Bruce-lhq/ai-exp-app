@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import math
+import os
 from .projects import directory
 from .state import AgentError
 
@@ -176,3 +177,55 @@ def read_file_chunk(payload):
     if not unchanged(after) or after.st_ino != before.st_ino or (not append_only and after.st_mtime_ns != before.st_mtime_ns):
         raise AgentError('FILE_CHANGED','文件发生变化，请重新同步')
     return {'data':base64.b64encode(data).decode()}
+
+
+def sync_files(payload):
+    """One bounded compressed snapshot, including verified append-only deltas."""
+    import base64
+    import gzip
+    import hashlib
+    root = directory(payload['path'])
+    manifest = file_manifest(payload)['files']
+    cached = payload.get('cached', {})
+    contents = {}
+    budget = 32 * 1024 * 1024
+    for entry in manifest:
+        name = entry['name']
+        if name == 'latest.pt': continue
+        previous = cached.get(name, {})
+        if previous.get('manifest') == entry: continue
+        path = root / name
+        offset = 0
+        with path.open('rb') as stream:
+            opened = os.fstat(stream.fileno())
+            if name == 'run.json':
+                entry.update(size=opened.st_size, mtime_ns=opened.st_mtime_ns, inode=opened.st_ino)
+            old_size = previous.get('size', 0)
+            if (name in {'metrics.jsonl', 'train.log', 'launch.log'} and
+                    previous.get('manifest', {}).get('inode') == entry['inode'] and
+                    0 < old_size <= entry['size']):
+                digest = hashlib.sha256()
+                remaining = old_size
+                while remaining:
+                    chunk = stream.read(min(1024 * 1024, remaining))
+                    if not chunk: break
+                    digest.update(chunk)
+                    remaining -= len(chunk)
+                if not remaining and digest.hexdigest() == previous.get('sha256'):
+                    offset = old_size
+            length = entry['size'] - offset
+            if length > budget: continue
+            stream.seek(offset)
+            data = stream.read(length)
+            after = os.fstat(stream.fileno())
+        append_only = name in {'metrics.jsonl', 'train.log', 'launch.log'}
+        if (len(data) != length or after.st_ino != entry['inode'] or
+                (append_only and after.st_size < entry['size']) or
+                (not append_only and after.st_mtime_ns != entry['mtime_ns'])):
+            raise AgentError('FILE_CHANGED', '文件发生变化，请重新同步')
+        if name == 'run.json': json.loads(data.decode('utf-8'))
+        contents[name] = {'offset': offset, 'data': base64.b64encode(data).decode('ascii')}
+        budget -= length
+    encoded = json.dumps(contents, separators=(',', ':')).encode('utf-8')
+    return {'files': manifest, 'after': file_manifest(payload)['files'],
+            'data': base64.b64encode(gzip.compress(encoded)).decode('ascii')}

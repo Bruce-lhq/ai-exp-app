@@ -18,6 +18,7 @@ from ai_exp_app.projects.api import create_router as project_router
 from ai_exp_app.runs.service import RunService
 from ai_exp_app.history.api import create_router as history_router
 from ai_exp_app.history.worker import sync_once
+from ai_exp_app.workspace_api import WorkspaceSync
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -25,6 +26,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     store = Store(config.data_dir / "app.sqlite3")
     store.config = config
     runs = RunService(store)
+    workspace_sync = WorkspaceSync(store, config)
     token_file = config.data_dir / "desktop-token"
     if not token_file.exists():
         fd = os.open(token_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -49,16 +51,21 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     async def lifespan(app):
         task = asyncio.create_task(worker())
         history_task = asyncio.create_task(history_worker())
+        workspace_task = asyncio.create_task(workspace_sync.worker())
         yield
         task.cancel()
         history_task.cancel()
+        workspace_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
         with contextlib.suppress(asyncio.CancelledError):
             await history_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await workspace_task
 
     app = FastAPI(title="AI 实验工作台", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.store, app.state.config, app.state.runs = store, config, runs
+    app.state.workspace_sync = workspace_sync
     app.state.instance_id = str(uuid.uuid4())
     app.state.desktop_seen = 0.0
     picker_requests = {}
@@ -67,6 +74,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(project_router(store))
     app.include_router(runs.create_router())
     app.include_router(history_router(store, config.cache_root))
+    app.include_router(workspace_sync.router())
 
     @app.get("/api/settings/local")
     def local_settings():

@@ -1,5 +1,7 @@
 import base64
 import json
+import gzip
+import hashlib
 import os
 import tempfile
 import threading
@@ -93,8 +95,26 @@ def sync_history(record, cache_root):
         if source['kind'] == 'local':
             files = local_manifest(source['path'], checkpoint)
         else:
-            files = rpc(source.get('ssh_alias', 'gpu'), 'file_manifest', payload)['files']
+            cached = {}
+            for entry in record.get('manifest', []):
+                dest = target / entry['name']
+                if entry['name'] not in ALLOWED_FILES or not dest.is_file() or dest.is_symlink(): continue
+                size = dest.stat().st_size
+                item = {'manifest': entry, 'size': size}
+                if size != entry['size']: continue
+                if entry['name'] in {'metrics.jsonl', 'train.log', 'launch.log'}:
+                    with dest.open('rb') as stream:
+                        item['sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
+                cached[entry['name']] = item
+            try:
+                bundle_snapshot = rpc(source.get('ssh_alias', 'gpu'), 'sync_files', {**payload, 'cached': cached})
+            except RuntimeError as exc:
+                if getattr(exc, 'code', None) != 'UNKNOWN_OPERATION': raise
+                bundle_snapshot = None
+            files = bundle_snapshot['files'] if bundle_snapshot is not None else rpc(source.get('ssh_alias', 'gpu'), 'file_manifest', payload)['files']
+        bundled = json.loads(gzip.decompress(base64.b64decode(bundle_snapshot['data']))) if source['kind'] == 'remote' and bundle_snapshot is not None else {}
         copied = []
+        checkpoint_downloaded = False
         previous = {f['name']: f for f in record.get('manifest', [])}
         for entry in files:
             name = entry['name']
@@ -104,6 +124,22 @@ def sync_history(record, cache_root):
             if dest.is_symlink():
                 raise ValueError('拒绝写入符号链接')
             if previous.get(name) == entry and dest.is_file() and dest.stat().st_size == entry['size'] and not (name == 'args.json' and record.get('parameter_overrides')):
+                copied.append(name)
+                continue
+            if name in bundled:
+                item = bundled[name]
+                data = base64.b64decode(item['data'])
+                def snapshot_chunks():
+                    if item['offset']:
+                        with dest.open('rb') as stream:
+                            remaining = item['offset']
+                            while remaining:
+                                chunk = stream.read(min(1024 * 1024, remaining))
+                                if not chunk: raise OSError('缓存文件在同步中发生变化')
+                                remaining -= len(chunk)
+                                yield chunk
+                    yield data
+                replace_complete_file(dest, snapshot_chunks())
                 copied.append(name)
                 continue
             if name == 'run.json' and source['kind'] == 'remote':
@@ -118,6 +154,7 @@ def sync_history(record, cache_root):
                 continue
             if name == 'latest.pt' and source['kind'] == 'remote':
                 download_checkpoint(source, entry, dest)
+                checkpoint_downloaded = True
                 copied.append(name)
                 continue
             if source['kind'] == 'local':
@@ -163,7 +200,7 @@ def sync_history(record, cache_root):
         if source['kind'] == 'local':
             after = local_manifest(source['path'], checkpoint)
         else:
-            after = rpc(source.get('ssh_alias', 'gpu'), 'file_manifest', payload)['files']
+            after = bundle_snapshot['after'] if bundle_snapshot is not None and not checkpoint_downloaded else rpc(source.get('ssh_alias', 'gpu'), 'file_manifest', payload)['files']
         warnings = []
         if checkpoint and 'latest.pt' not in copied:
             warnings.append('没有 latest.pt，无法缓存 checkpoint 或严格续跑')
@@ -172,4 +209,4 @@ def sync_history(record, cache_root):
         if 'metrics.jsonl' not in copied:
             warnings.append('缺少 metrics.jsonl，曲线不可用')
         return {'sync_status': 'synced' if after == files else 'pending', 'files': copied,
-                'warnings': warnings, 'sync_error': None, 'manifest': files if after == files else [], **migrated}
+                'warnings': warnings, 'sync_error': None, 'manifest': files, **migrated}

@@ -43,13 +43,13 @@ jobs:
       - name: Verify source, CI and package provenance
         run: |
           python3 - <<'PY'
-          import json, os, re, subprocess, pathlib, tomllib
+          import json, os, re, subprocess, pathlib, runpy
           tag, run_id = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN_ID']
           if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or not run_id.isdecimal():
               raise SystemExit('Invalid tag or run ID')
-          version=tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
-          if tag != 'v'+version or json.loads(pathlib.Path('web/package.json').read_text())['version'] != version:
-              raise SystemExit('Tag, Python and frontend versions must match')
+          version=runpy.run_path('src/ai_exp_app/__init__.py')['__version__']
+          if tag != 'v'+version:
+              raise SystemExit('Tag and application version must match')
           if os.environ['PRERELEASE'] != 'true' and not pathlib.Path('docs/releases/'+tag+'.md').is_file():
               raise SystemExit('A regular release needs version-specific release notes')
           def api(path):

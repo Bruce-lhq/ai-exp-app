@@ -9,6 +9,7 @@ import {
   type ChartSettings,
   type Series,
 } from "./ExperimentChart";
+import { useSharedPlotView } from "./useSharedPlotView";
 import { TablePanel } from "./TablePanel";
 const initial: ChartSettings = {
   metric: "val_ppl",
@@ -72,11 +73,12 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     [advanced, setAdvanced] = useState(false),
     [appearance, setAppearance] = useState(initialAppearance),
     [appearanceDrag, setAppearanceDrag] = useState("");
+  useSharedPlotView(settings, appearance, setSettings, setAppearance, notify);
   useEffect(() => {
     localStorage.setItem("analysis.appearance", JSON.stringify(appearance));
   }, [appearance]);
   useEffect(() => {
-    api("/api/history")
+    const refresh = () => api("/api/history")
       .then((x) => {
         const visible = items(x).filter((h) => h.visibility !== "archived");
         setHistory(visible);
@@ -84,6 +86,9 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
         setIds((current) => current.filter((id) => available.has(id)));
       })
       .catch((e) => notify(e.message));
+    refresh();
+    window.addEventListener("workspace-sync-changed", refresh);
+    return () => window.removeEventListener("workspace-sync-changed", refresh);
   }, []);
   useEffect(() => {
     localStorage.setItem("analysis.ids", JSON.stringify(ids));

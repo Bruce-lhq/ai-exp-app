@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { version } from "../../package.json";
+import { WorkspaceSync } from "./WorkspaceSync";
+import { VersionLabel } from "./VersionLabel";
 import {
   SlidersHorizontal,
   Activity,
@@ -113,7 +114,7 @@ export default function App() {
             实验与结果，一处管理
           </p>
           <div className="version">
-            AI Experiment <span>v{version}</span>
+            AI Experiment <VersionLabel />
           </div>
         </div>
       </aside>
@@ -124,6 +125,7 @@ export default function App() {
             {nav.find((n) => n.id === page)?.name}
           </span>
           <div className="row">
+            <WorkspaceSync notify={notify} />
             <select className="theme-selector" aria-label="外观模式" value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
               <option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option>
             </select>

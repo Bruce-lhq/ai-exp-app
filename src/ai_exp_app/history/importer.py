@@ -43,6 +43,20 @@ def enrich(record):
     return record
 
 
+def save_cache_update(store, identity, update):
+    # A cloud metadata edit may arrive while a file transfer is in progress.
+    # Apply only the transfer result to the latest row, rather than its old copy.
+    with store.lock:
+        record = store.get('history', identity)
+        if record is None:
+            raise ValueError('历史记录已移除')
+        update = dict(update)
+        if 'parameter_annotations' in update:
+            update['parameter_annotations'] = {**update['parameter_annotations'], **record.get('parameter_annotations', {})}
+        record.update(update)
+        return store.put('history', identity, enrich(record))
+
+
 def import_history(store, source, cache_root, name=None, run_id=None, synchronize=True, visibility='visible'):
     source = dict(source)
     source['kind'] = source.get('kind', source.get('source', 'local'))
@@ -59,10 +73,11 @@ def import_history(store, source, cache_root, name=None, run_id=None, synchroniz
         with run_lock(existing['id']):
             existing = store.get('history', existing['id'])
             existing['visibility'] = 'visible'
+            store.put('history', existing['id'], existing)
             if synchronize:
-                existing.update(sync_history(existing, cache_root))
-                existing.update(sync_failures=0, next_retry_at=0)
-            return store.put('history', existing['id'], enrich(existing))
+                update = {**sync_history(existing, cache_root), 'sync_failures': 0, 'next_retry_at': 0}
+                return save_cache_update(store, existing['id'], update)
+            return enrich(existing)
     identity = run_id or str(uuid.uuid4())
     name = name or source_path.name
     cache_root = Path(cache_root).resolve()

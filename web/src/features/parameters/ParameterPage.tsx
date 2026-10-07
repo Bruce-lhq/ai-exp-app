@@ -111,6 +111,14 @@ export function ParameterPage({
     return () => { alive = false; };
   }, [reload]);
   useEffect(() => {
+    const synced = () => {
+      api("/api/projects", undefined, undefined, { background: true }).then(value => setProjects(items(value))).catch(() => {});
+      if (project) api(`${base}/presets`, undefined, undefined, { background: true }).then(value => setPresets(items(value))).catch(() => {});
+    };
+    window.addEventListener("workspace-sync-changed", synced);
+    return () => window.removeEventListener("workspace-sync-changed", synced);
+  }, [project]);
+  useEffect(() => {
     if (!project) return;
     setBusy(true);
     setResume(undefined);

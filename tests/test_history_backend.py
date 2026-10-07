@@ -262,7 +262,7 @@ def test_notes_are_trimmed_and_persisted(setup):
 
 def test_running_import_includes_managed_and_refresh_invalidates_analysis_cache(setup, monkeypatch):
     from ai_exp_app.analysis.api import create_router as analysis_router
-    from ai_exp_remote.files import file_manifest, read_file_chunk, read_file
+    from ai_exp_remote.files import file_manifest, read_file_chunk, read_file, sync_files
     store, cache, source, client = setup
     current = source.parent / 'current'; current.mkdir()
     (current / 'args.json').write_text('{}')
@@ -280,7 +280,7 @@ def test_running_import_includes_managed_and_refresh_invalidates_analysis_cache(
             result = file_manifest(payload)
             (current / 'run.json').write_text('{"status":"running","tick":2}')
             return result
-        return {'read_file_chunk': read_file_chunk, 'read_file': read_file}[operation](payload)
+        return {'read_file_chunk': read_file_chunk, 'read_file': read_file, 'sync_files': sync_files}[operation](payload)
     monkeypatch.setattr('ai_exp_app.history.sync.rpc', rpc)
     client.app.include_router(analysis_router(store))
     response = client.post('/api/history/sync-running').json()
@@ -375,3 +375,43 @@ def test_windows_drive_and_unc_validation_without_windows_filesystem(tmp_path, m
                                      tmp_path / 'cache', synchronize=False)
     assert record['source']['path'] == source_path
     assert record['name'] == 'example'
+
+
+def test_running_refresh_does_not_wait_for_other_existing_cache(setup, monkeypatch):
+    import threading
+    import ai_exp_app.history.api as history_api
+    store, cache, source, client = setup
+    second_entered = threading.Event()
+    for identity in ('first', 'second'):
+        store.put('runs', identity, {'id': identity, 'status': 'running', 'remote_path': '/runs/' + identity})
+        store.put('history', identity, {'id': identity, 'name': identity, 'visibility': 'visible',
+            'source': {'kind': 'remote', 'path': '/runs/' + identity, 'ssh_alias': 'gpu'},
+            'cache_dir': str(cache / identity), 'sync_status': 'pending'})
+    def independent_pull(store, source, cache_root, name, run_id, **kwargs):
+        if run_id == 'first':
+            assert second_entered.wait(3), 'one cache blocked all other running experiments'
+        else:
+            second_entered.set()
+        return store.get('history', run_id)
+    monkeypatch.setattr(history_api, 'import_history', independent_pull)
+    result = client.post('/api/history/sync-running', json={}).json()
+    assert result['count'] == 2
+    assert [r['id'] for r in result['items']] == ['first', 'second']
+    assert all(r['status'] == 'running' for r in result['items'])
+
+
+def test_file_refresh_preserves_metadata_arriving_during_transfer(setup, monkeypatch):
+    import ai_exp_app.history.importer as importer
+    store, cache, source, client = setup
+    source_info = {'kind': 'remote', 'path': '/runs/shared', 'ssh_alias': 'gpu'}
+    store.put('history', 'shared', {'id': 'shared', 'run_id': 'shared', 'name': 'original',
+        'source': source_info, 'cache_dir': str(cache / 'shared'), 'visibility': 'visible', 'notes': ''})
+    def transfer(record, cache_root):
+        incoming = store.get('history', 'shared')
+        incoming.update(name='cloud name', notes='cloud edit', visibility='archived')
+        store.put('history', 'shared', incoming)
+        return {'files': ['args.json'], 'sync_status': 'synced'}
+    monkeypatch.setattr(importer, 'sync_history', transfer)
+    result = importer.import_history(store, source_info, cache, run_id='shared')
+    assert result['name'] == 'cloud name' and result['notes'] == 'cloud edit'
+    assert result['visibility'] == 'archived' and result['sync_status'] == 'synced'

@@ -78,7 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         guard let data = request("/api/health"), let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
         guard let identityData = FileManager.default.contents(atPath: root + "/service.json"),
               let identity = try? JSONSerialization.jsonObject(with: identityData) as? [String: Any] else { return false }
-        return value["app"] as? String == "ai-exp-app" && value["instance_id"] as? String == identity["instance_id"] as? String && identity["url"] as? String == origin
+        return value["app"] as? String == "ai-exp-app" && value["instance_id"] as? String == identity["instance_id"] as? String && identity["url"] as? String == origin && value["version"] as? String == Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    }
+
+    func stopOutdatedService() {
+        guard let data = request("/api/health"), let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let identityData = FileManager.default.contents(atPath: root + "/service.json"),
+              let identity = try? JSONSerialization.jsonObject(with: identityData) as? [String: Any],
+              value["app"] as? String == "ai-exp-app", identity["url"] as? String == origin,
+              value["instance_id"] as? String == identity["instance_id"] as? String,
+              value["version"] as? String != Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else { return }
+        // Only replace this workspace's owned backend; remote training keeps running.
+        _ = request("/api/desktop/shutdown", method: "POST")
+        for _ in 0..<40 {
+            if request("/api/health") == nil { return }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
     }
 
     @objc func openWorkspace() { open(path: "") }
@@ -93,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         opening = true
         DispatchQueue.global().async {
             if !self.health() {
+                self.stopOutdatedService()
                 let p = Process()
                 p.executableURL = URL(fileURLWithPath: Bundle.main.resourcePath! + "/server/ai-experiment")
                 p.arguments = ["service", "run"]

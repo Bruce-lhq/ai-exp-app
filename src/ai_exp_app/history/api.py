@@ -4,11 +4,12 @@ import secrets
 import shutil
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
-from .importer import enrich, import_history
+from .importer import enrich, import_history, save_cache_update
 from .paths import export_basename
 from .sync import ALLOWED_FILES, run_lock, rpc, sync_history
 
@@ -40,10 +41,10 @@ def create_router(store, cache_root: Path):
 
     @router.post('/api/history/sync-running')
     def sync_running():
-        imported = []
-        for run in store.list('runs'):
-            if run.get('status') not in {'running', 'stopping', 'external_running'} or not run.get('remote_path'):
-                continue
+        runs = [run for run in store.list('runs')
+                if run.get('status') in {'running', 'stopping', 'external_running'} and run.get('remote_path')]
+
+        def pull(run):
             try:
                 record = import_history(store, {
                     'kind': 'remote', 'path': run['remote_path'],
@@ -54,10 +55,19 @@ def create_router(store, cache_root: Path):
                     record = get(record['id'])
                     record.update(status=run['status'], attempts=run.get('attempts', []),
                                   stop_tokens=run.get('stop_tokens'), sync_failures=0, next_retry_at=0)
-                    imported.append(store.put('history', record['id'], enrich(record)))
+                    return store.put('history', record['id'], enrich(record))
             except (ValueError, OSError, RuntimeError) as exc:
-                imported.append({'id': run['id'], 'name': run.get('display_name'),
-                                 'sync_status': 'pending', 'sync_error': str(exc)})
+                return {'id': run['id'], 'name': run.get('display_name'),
+                        'sync_status': 'pending', 'sync_error': str(exc)}
+        # New imports allocate cache names serially; existing independent caches
+        # can refresh concurrently without making one experiment wait for another.
+        sources = {(h.get('source', {}).get('path'), h.get('source', {}).get('ssh_alias', 'gpu'))
+                   for h in store.list('history') if h.get('source', {}).get('kind') == 'remote'}
+        if len(runs) > 1 and all((r['remote_path'], r.get('ssh_alias', 'gpu')) in sources for r in runs):
+            with ThreadPoolExecutor(max_workers=min(4, len(runs))) as pool:
+                imported = list(pool.map(pull, runs))
+        else:
+            imported = list(map(pull, runs))
         return {'count': len(imported), 'items': imported}
 
     @router.post('/api/history/{identity}/resume-editor')
@@ -95,8 +105,7 @@ def create_router(store, cache_root: Path):
             with run_lock(candidate['id']):
                 record = get(candidate['id'])
                 try:
-                    record.update(sync_history(record, cache_root))
-                    store.put('history', record['id'], record)
+                    save_cache_update(store, record['id'], sync_history(record, cache_root))
                 except (OSError, ValueError, RuntimeError) as exc:
                     warnings.append(f"{record['name']}：{exc}")
         return {'warnings': warnings}
@@ -209,10 +218,9 @@ def create_router(store, cache_root: Path):
             if source['kind'] != 'remote':
                 raise HTTPException(422, '此实验没有远端来源')
             try:
-                record.update(sync_history(record, cache_root))
+                record = save_cache_update(store, identity, sync_history(record, cache_root))
                 if record['sync_status'] != 'synced':
                     raise HTTPException(409, '最终记录尚未同步，请稍后重试')
-                store.put('history', identity, record)
                 remote_preview = rpc(source.get('ssh_alias', 'gpu'), 'delete_preview', {'path': source['path']})
             except (RuntimeError, OSError, ValueError) as exc:
                 raise HTTPException(409, str(exc)) from exc

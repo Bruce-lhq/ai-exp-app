@@ -18,7 +18,7 @@ from .state import AgentError,Store,emit
 from .config import settings
 
 ROOT=Path(os.environ.get('AI_EXP_REMOTE_ROOT',settings()['remote_state_dir']))
-READERS={'list_directory':files.list_directory,'inspect_project':projects.inspect_project,'read_schema':projects.read_schema,'inspect_files':files.inspect_files,'read_file':files.read_file,'file_manifest':files.file_manifest,'read_file_chunk':files.read_file_chunk}
+READERS={'list_directory':files.list_directory,'inspect_project':projects.inspect_project,'read_schema':projects.read_schema,'inspect_files':files.inspect_files,'read_file':files.read_file,'file_manifest':files.file_manifest,'read_file_chunk':files.read_file_chunk,'sync_files':files.sync_files}
 MUTATIONS={'submit','stop','pause','resume','queue_order','queue_pause','queue_resume','queue_remove','delete_preview','delete_confirm','remove_external'}
 
 def external_runs(alias='gpu'):

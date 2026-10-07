@@ -1,5 +1,5 @@
 import time
-from .importer import enrich, import_history
+from .importer import import_history, save_cache_update
 from .repository import TERMINAL
 from .sync import run_lock, sync_history
 
@@ -28,17 +28,21 @@ def sync_once(store, cache_root):
                 except (OSError, ValueError):
                     continue
             if existing:
-                if existing.get('status') != run.get('status'):
-                    existing['sync_status'] = 'pending'
-                existing['status'] = run.get('status', existing['status'])
-                existing['attempts'] = run.get('attempts', [])
-                existing['stop_tokens'] = run.get('stop_tokens')
-                if run.get('project_id'):
-                    display = store.get('preferences', f"parameters:{run['project_id']}") or {}
-                    existing['parameter_labels'] = display.get('aliases', {})
-                if existing.get('visibility') == 'tracking' and run.get('status') in TERMINAL:
-                    existing['visibility'] = 'visible'
-                store.put('history', existing['id'], existing)
+                with store.lock:
+                    existing = store.get("history", existing["id"])
+                    if not existing or existing.get("visibility") == "removed":
+                        continue
+                    if existing.get('status') != run.get('status'):
+                        existing['sync_status'] = 'pending'
+                    existing['status'] = run.get('status', existing['status'])
+                    existing['attempts'] = run.get('attempts', [])
+                    existing['stop_tokens'] = run.get('stop_tokens')
+                    if run.get('project_id'):
+                        display = store.get('preferences', f"parameters:{run['project_id']}") or {}
+                        existing['parameter_labels'] = display.get('aliases', {})
+                    if existing.get('visibility') == 'tracking' and run.get('status') in TERMINAL:
+                        existing['visibility'] = 'visible'
+                    store.put('history', existing['id'], existing)
     failed_aliases = set()
     for candidate in store.list('history'):
         with run_lock(candidate['id']):
@@ -52,13 +56,11 @@ def sync_once(store, cache_root):
             if record.get('next_retry_at', 0) > time.time() or (alias and alias in failed_aliases):
                 continue
             try:
-                record.update(sync_history(record, cache_root))
-                record.update(sync_failures=0, next_retry_at=0)
-                enrich(record)
+                update = {**sync_history(record, cache_root), 'sync_failures': 0, 'next_retry_at': 0}
             except Exception as exc:
                 failures = record.get('sync_failures', 0) + 1
-                record.update(sync_status='pending', sync_error=str(exc), sync_failures=failures,
+                update = dict(sync_status='pending', sync_error=str(exc), sync_failures=failures,
                               next_retry_at=time.time() + min(300, 2 ** min(failures, 8)))
                 if alias:
                     failed_aliases.add(alias)
-            store.put('history', record['id'], record)
+            save_cache_update(store, record['id'], update)

@@ -72,5 +72,6 @@ def test_macos_bundle_version_matches_bundled_backend(tmp_path, monkeypatch):
     macos.main()
     info = plistlib.loads((macos.APP / 'Contents/Info.plist').read_bytes())
     assert info['CFBundleShortVersionString'] == '1.2.3.dev4'
+    assert info['CFBundleVersion'] == '1.2.3'
     assert 'AIExperimentRoot' not in info
     assert (macos.APP / 'Contents/Resources/server/ai-experiment').is_file()

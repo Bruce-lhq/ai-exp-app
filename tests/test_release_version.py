@@ -10,11 +10,13 @@ from ai_exp_app import __version__
 def test_release_versions_agree():
     root = Path(__file__).resolve().parents[1]
     expected = Version(__version__)
-    assert Version(tomllib.loads((root / 'pyproject.toml').read_text())['project']['version']) == expected
-    assert Version(json.loads((root / 'web/package.json').read_text())['version']) == expected
+    project = tomllib.loads((root / 'pyproject.toml').read_text())
+    assert project['project']['dynamic'] == ['version']
+    assert project['tool']['setuptools']['dynamic']['version']['attr'] == 'ai_exp_app.__version__'
+    assert 'version' not in json.loads((root / 'web/package.json').read_text())
     lock = json.loads((root / 'web/package-lock.json').read_text())
-    assert Version(lock['version']) == expected
-    assert Version(lock['packages']['']['version']) == expected
+    assert 'version' not in lock
+    assert 'version' not in lock['packages']['']
     spec = importlib.util.spec_from_file_location('release_builder', root / 'scripts/build_desktop.py')
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)
