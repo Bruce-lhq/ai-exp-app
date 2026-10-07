@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { version } from "../../package.json";
 import {
   SlidersHorizontal,
   Activity,
@@ -112,7 +113,7 @@ export default function App() {
             实验与结果，一处管理
           </p>
           <div className="version">
-            个人工作台 <span>v0.4.1</span>
+            AI Experiment <span>v{version}</span>
           </div>
         </div>
       </aside>

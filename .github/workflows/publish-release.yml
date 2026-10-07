@@ -1,23 +1,28 @@
-name: Publish verified preview
+name: Publish verified release
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing version tag to publish (for example v0.4.0)
+        description: Existing version tag to publish (for example v0.5.0)
         required: true
         type: string
       build_run_id:
         description: Successful Platform packages run for the exact tagged commit
         required: true
         type: string
+      prerelease:
+        description: Mark this release as a preview
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: preview-release-${{ inputs.tag }}
+  group: release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -29,6 +34,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ inputs.tag }}
       BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      PRERELEASE: ${{ inputs.prerelease }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -37,10 +43,15 @@ jobs:
       - name: Verify source, CI and package provenance
         run: |
           python3 - <<'PY'
-          import json, os, re, subprocess
+          import json, os, re, subprocess, pathlib, tomllib
           tag, run_id = os.environ['RELEASE_TAG'], os.environ['BUILD_RUN_ID']
           if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or not run_id.isdecimal():
               raise SystemExit('Invalid tag or run ID')
+          version=tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          if tag != 'v'+version or json.loads(pathlib.Path('web/package.json').read_text())['version'] != version:
+              raise SystemExit('Tag, Python and frontend versions must match')
+          if os.environ['PRERELEASE'] != 'true' and not pathlib.Path('docs/releases/'+tag+'.md').is_file():
+              raise SystemExit('A regular release needs version-specific release notes')
           def api(path):
               return json.loads(subprocess.check_output(['gh', 'api', 'repos/'+os.environ['GH_REPO']+path]))
           commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
@@ -89,6 +100,8 @@ jobs:
                           raise SystemExit('Installed Ubuntu package did not pass')
                   for name in packages:
                       shutil.copyfile(folder/'releases'/name,output/name)
+                  if target=='ubuntu-amd64':
+                      shutil.copyfile(folder/'releases/AI-Experiment-GPU-Web.tar.gz',output/'AI-Experiment-GPU-Web.tar.gz')
                   for path in sorted((folder/'verification').glob('*.json')):
                       evidence.write(path,target+'/'+path.name)
           sums=[]
@@ -99,18 +112,15 @@ jobs:
               sums.append(digest.hexdigest()+'  '+path.name+'\n')
           (output/'SHA256SUMS.txt').write_text(''.join(sums))
           tag=os.environ['RELEASE_TAG']
-          (output/'release-notes.md').write_text(f'''Cross-platform preview: {tag}
-
-          Desktop installers and standalone CLI for macOS Apple Silicon / Intel, Windows x64 and Ubuntu 24.04 x64. Browser, desktop and CLI share a private workspace and cached analysis.
-
-          Target-system CI passed packaged service, local history, Markdown, offline PNG and real native renderer checks. Windows also passed actual install/upgrade/uninstall with cache preservation; Ubuntu passed installed deb rendering. Evidence is in verification.zip; verify downloads with SHA256SUMS.txt.
-
-          Windows CI runs on Windows Server, not a human-tested Windows 11 desktop. Linux UI runs under Xvfb; real-desktop notifications, file dialogs and display scaling still need human acceptance. macOS CI uses macOS 15; older supported OS versions still need verification. macOS is ad-hoc signed without Developer ID notarization; Windows installer is unsigned. WebView2 installation requires internet access.
-
-          Setup: follow the README and its short Agent prompt. Remote execution requires Linux with Python 3.8+ and a project integration profile. No personal workspace configuration or experiments are included.
-          ''')
+          notes=pathlib.Path('docs/releases/'+tag+'.md')
+          (output/'release-notes.md').write_text(notes.read_text() if notes.exists() else 'Preview release: '+tag+'\n\nSee README for setup and platform verification limits.\n')
           PY
-      - name: Publish preview release
+      - name: Publish release with complete assets
         run: |
-          gh release create "$RELEASE_TAG" --verify-tag --prerelease --title "$RELEASE_TAG · Cross-platform preview" --notes-file .local/publish/release-notes.md
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG · AI Experiment" --notes-file .local/publish/release-notes.md
           gh release upload "$RELEASE_TAG" .local/publish/*.dmg .local/publish/*.exe .local/publish/*.deb .local/publish/*.tar.gz .local/publish/*.zip .local/publish/SHA256SUMS.txt
+          if [ "$PRERELEASE" = true ]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+          fi

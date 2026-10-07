@@ -14,7 +14,8 @@ import urllib.request
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='0.4.1'
+from ai_exp_app import __version__
+VERSION=__version__
 
 
 def write_licenses(resources):

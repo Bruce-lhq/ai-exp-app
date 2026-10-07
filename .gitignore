@@ -18,3 +18,4 @@ docs/validation/
 *.dmg
 *.app/
 *.bundle
+outputs/

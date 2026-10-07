@@ -79,6 +79,9 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Build GPU web source bundle
+        if: runner.os == 'Linux'
+        run: '"${{ matrix.python }}" scripts/build_gpu_web.py'
       - name: Install Linux desktop libraries
         if: runner.os == 'Linux'
         run: |
