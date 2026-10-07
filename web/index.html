@@ -13,6 +13,10 @@
     <title>AI Experiment</title>
     <script>
       (function () {
+        try {
+          var theme = localStorage.getItem("appearance.theme");
+          document.documentElement.dataset.theme = theme === "dark" || (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+        } catch (_) {}
         function showFailure() {
           var message = document.getElementById("startup-message");
           if (message) message.textContent = "页面尚未加载完成。请检查网络和 SSH 转发，重新连接后点击重试。";
@@ -26,7 +30,7 @@
   </head>
   <body>
     <div id="root">
-      <div style="padding:32px;font:16px system-ui;color:#25334b;background:#f2f5f9;min-height:100vh;box-sizing:border-box">
+      <div style="padding:32px;font:16px system-ui;color:var(--text);background:var(--background);min-height:100vh;box-sizing:border-box">
         <h1 style="font-size:24px">AI Experiment</h1>
         <p id="startup-message" role="status">正在加载工作台…</p>
         <a href="/">重新加载</a>

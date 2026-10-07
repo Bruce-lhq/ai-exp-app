@@ -19,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     let notificationQueue = DispatchQueue(label: "ai-exp.notifications")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let icon = NSImage(contentsOf: Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/AppIcon.icns")) {
+            NSApp.applicationIconImage = icon
+        }
         let menu = NSMenu()
         let top = NSMenuItem()
         let appMenu = NSMenu()

@@ -9,6 +9,7 @@ import {
   Bell,
   Settings,
 } from "lucide-react";
+import { useTheme, type ThemeMode } from "./theme";
 import { api, type Parameters } from "./api";
 import { enableSystemNotifications } from "./notifications";
 import { ParameterPage } from "../features/parameters/ParameterPage";
@@ -17,6 +18,7 @@ import { HistoryPage } from "../features/history/HistoryPage";
 import { AnalysisPage } from "../features/analysis/AnalysisPage";
 import { LocalSettingsDialog, type SettingsResponse } from "./LocalSettings";
 export default function App() {
+  const [theme, setTheme] = useTheme();
   const [page, setPage] = useState("monitor"),
     [message, setMessage] = useState(""),
     [connection, setConnection] = useState<any>({ connected: false }),
@@ -121,6 +123,9 @@ export default function App() {
             {nav.find((n) => n.id === page)?.name}
           </span>
           <div className="row">
+            <select className="theme-selector" aria-label="外观模式" value={theme} onChange={(event) => setTheme(event.target.value as ThemeMode)}>
+              <option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option>
+            </select>
             <button className="icon" title="工作空间设置" aria-label="工作空间设置" onClick={async () => {
               try { setLocalSettings(await api<SettingsResponse>("/api/settings/local")); }
               catch (error) { notify((error as Error).message); }

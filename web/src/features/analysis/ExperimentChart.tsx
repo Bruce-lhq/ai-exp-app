@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Chart from "chart.js/auto";
+import { useDarkTheme } from "../../app/theme";
 export type Series = {
   id: string;
   name: string;
@@ -54,8 +55,10 @@ export function chartConfiguration(
   series: Series[],
   settings: ChartSettings,
   appearance: Record<string, { name?: string; color?: string; order?: number }> = {},
+  dark = false,
 ) {
   const colors = seriesColors(series, appearance);
+  const ink = dark ? "#e1e9f4" : "#666666";
   const fontFamily = '"Hiragino Sans GB", "DejaVu Sans", sans-serif';
   return {
     type: "line" as const,
@@ -91,6 +94,7 @@ export function chartConfiguration(
         title: {
           display: !!settings.title,
           text: settings.title,
+          color: ink,
           align: "center" as const,
           font: { family: fontFamily, size: 24, weight: "bold" as const },
           padding: { top: 8, bottom: 18 },
@@ -106,19 +110,21 @@ export function chartConfiguration(
       scales: {
         x: {
           type: settings.xScale,
-          title: { display: true, text: settings.xLabel || settings.xAxis, font: { family: fontFamily, size: 17 } },
+          title: { color: ink, display: true, text: settings.xLabel || settings.xAxis, font: { family: fontFamily, size: 17 } },
           min: settings.xMin,
           max: settings.xMax,
-          ticks: { font: { family: fontFamily, size: 15 } },
-          grid: { color: "#D7E0EA", lineWidth: 1 },
+          ticks: { color: ink, font: { family: fontFamily, size: 15 } },
+          grid: { color: dark ? "#34435a" : "#D7E0EA", lineWidth: 1 },
+          border: { color: dark ? "#61738e" : undefined },
         },
         y: {
           type: settings.yScale,
-          title: { display: true, text: settings.yLabel || settings.metric, font: { family: fontFamily, size: 17 } },
+          title: { color: ink, display: true, text: settings.yLabel || settings.metric, font: { family: fontFamily, size: 17 } },
           min: settings.yMin,
           max: settings.yMax,
-          ticks: { font: { family: fontFamily, size: 15 } },
-          grid: { color: "#D7E0EA", lineWidth: 1 },
+          ticks: { color: ink, font: { family: fontFamily, size: 15 } },
+          grid: { color: dark ? "#34435a" : "#D7E0EA", lineWidth: 1 },
+          border: { color: dark ? "#61738e" : undefined },
         },
       },
     },
@@ -148,7 +154,7 @@ export function chartConfiguration(
             ctx.moveTo(left, y);
             ctx.lineTo(left + lineWidth, y);
             ctx.stroke();
-            ctx.fillStyle = "#111111";
+            ctx.fillStyle = dark ? ink : "#111111";
             ctx.fillText(dataset.label || "", left + lineWidth + gap, y, textWidth);
           });
           ctx.restore();
@@ -160,7 +166,7 @@ export function chartConfiguration(
           const { ctx } = chart;
           ctx.save();
           ctx.globalCompositeOperation = "destination-over";
-          ctx.fillStyle = "white";
+          ctx.fillStyle = dark ? "#1b2433" : "white";
           ctx.fillRect(0, 0, chart.width, chart.height);
           ctx.restore();
         },
@@ -206,6 +212,7 @@ export function ExperimentChart({
   settings: ChartSettings;
   appearance?: Record<string, { name?: string; color?: string }>;
 }) {
+  const dark = useDarkTheme();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 600px)").matches);
   useEffect(() => {
@@ -216,7 +223,7 @@ export function ExperimentChart({
   }, []);
   useEffect(() => {
     if (!canvas.current) return;
-    const config = chartConfiguration(series, settings, appearance);
+    const config = chartConfiguration(series, settings, appearance, dark);
     if (compact) {
       config.plugins = config.plugins.filter((plugin) => plugin.id !== "inset-line-legend");
       config.options.plugins.title.font.size = 18;
@@ -227,7 +234,7 @@ export function ExperimentChart({
     }
     const chart = new Chart(canvas.current, config);
     return () => chart.destroy();
-  }, [series, settings, appearance, compact]);
+  }, [series, settings, appearance, compact, dark]);
   return (
     <>
     {compact && <ul className="mobile-chart-legend" aria-label="曲线图例">{series.map((item, index) => <li key={item.id}><i style={{ borderColor: seriesColors(series, appearance)[index] }} />{appearance[item.id]?.name || item.name}</li>)}</ul>}
