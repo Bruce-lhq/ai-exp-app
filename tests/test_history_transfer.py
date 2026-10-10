@@ -1,15 +1,19 @@
 import base64
 import gzip
 import json
+import pytest
 from ai_exp_app.history import sync
 from ai_exp_app.transport.ssh import RemoteError
 from ai_exp_remote import files
 
 
-def test_compressed_snapshot_incremental_refresh_and_rewrite(tmp_path, monkeypatch):
+@pytest.mark.parametrize('newline', [b'\n', b'\r\n'], ids=['lf', 'crlf'])
+def test_compressed_snapshot_incremental_refresh_and_rewrite(tmp_path, monkeypatch, newline):
     origin = tmp_path / 'source'; origin.mkdir()
     (origin / 'args.json').write_text('{}')
-    (origin / 'metrics.jsonl').write_text('first\n' * 1000)
+    initial = (b'first' + newline) * 1000
+    appended = b'next' + newline
+    (origin / 'metrics.jsonl').write_bytes(initial)
     (origin / 'run.json').write_text('{"status":"running"}')
     (origin / 'latest.pt').write_bytes(b'checkpoint')
     cache = tmp_path / 'cache'
@@ -26,20 +30,21 @@ def test_compressed_snapshot_incremental_refresh_and_rewrite(tmp_path, monkeypat
     monkeypatch.setattr(sync, 'rpc', rpc)
     record.update(sync.sync_history(record, cache))
     assert calls[0] == 'sync_files'
-    assert (cache / 'live' / 'metrics.jsonl').read_text() == 'first\n' * 1000
+    assert (cache / 'live' / 'metrics.jsonl').read_bytes() == initial
     assert not (cache / 'live' / 'latest.pt').exists()
     calls.clear()
-    with (origin / 'metrics.jsonl').open('a') as stream: stream.write('next\n')
+    with (origin / 'metrics.jsonl').open('ab') as stream: stream.write(appended)
     record.update(sync.sync_history(record, cache))
-    assert calls[1]['metrics.jsonl']['offset'] == 6000
-    assert base64.b64decode(calls[1]['metrics.jsonl']['data']) == b'next\n'
-    assert (cache / 'live' / 'metrics.jsonl').read_text().endswith('next\n')
+    assert calls[1]['metrics.jsonl']['offset'] == len(initial)
+    assert base64.b64decode(calls[1]['metrics.jsonl']['data']) == appended
+    assert (cache / 'live' / 'metrics.jsonl').read_bytes() == initial + appended
     # Same inode can be rewritten as well as appended; verify the prefix.
-    (origin / 'metrics.jsonl').write_text('replacement\n' * 1000)
+    replacement = (b'replacement' + newline) * 1000
+    (origin / 'metrics.jsonl').write_bytes(replacement)
     calls.clear()
     record.update(sync.sync_history(record, cache))
     assert calls[1]['metrics.jsonl']['offset'] == 0
-    assert (cache / 'live' / 'metrics.jsonl').read_text() == 'replacement\n' * 1000
+    assert (cache / 'live' / 'metrics.jsonl').read_bytes() == replacement
 
 
 def test_status_churn_keeps_transferred_manifest(tmp_path, monkeypatch):
