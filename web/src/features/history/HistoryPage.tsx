@@ -181,6 +181,9 @@ export function HistoryPage({
                   <span className="sync-label">
                     {h.sync_status || "已缓存"}
                   </span>
+                  {h.checkpoint_sync_status === "pending" && <span className="sync-label" title={h.checkpoint_sync_error || "参数、指标和日志已同步；checkpoint 在后台下载"}>
+                    checkpoint 后台同步中
+                  </span>}
                 </div>
                 <div className="history-meta">
                   <button

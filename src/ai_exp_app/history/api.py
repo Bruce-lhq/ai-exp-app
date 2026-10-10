@@ -105,7 +105,7 @@ def create_router(store, cache_root: Path):
             with run_lock(candidate['id']):
                 record = get(candidate['id'])
                 try:
-                    save_cache_update(store, record['id'], sync_history(record, cache_root))
+                    save_cache_update(store, record['id'], sync_history(record, cache_root, include_checkpoint=False))
                 except (OSError, ValueError, RuntimeError) as exc:
                     warnings.append(f"{record['name']}：{exc}")
         return {'warnings': warnings}
@@ -218,9 +218,11 @@ def create_router(store, cache_root: Path):
             if source['kind'] != 'remote':
                 raise HTTPException(422, '此实验没有远端来源')
             try:
-                record = save_cache_update(store, identity, sync_history(record, cache_root))
+                record = save_cache_update(store, identity, sync_history(record, cache_root, include_checkpoint=False))
                 if record['sync_status'] != 'synced':
                     raise HTTPException(409, '最终记录尚未同步，请稍后重试')
+                if record.get('checkpoint_sync_status') == 'pending':
+                    raise HTTPException(409, 'checkpoint 正在后台同步，完成后才能删除远端文件')
                 remote_preview = rpc(source.get('ssh_alias', 'gpu'), 'delete_preview', {'path': source['path']})
             except (RuntimeError, OSError, ValueError) as exc:
                 raise HTTPException(409, str(exc)) from exc

@@ -6,6 +6,7 @@ import os
 import tempfile
 import threading
 import subprocess
+import time
 from pathlib import Path
 
 ALLOWED_FILES = {'args.json', 'model_config.json', 'metrics.jsonl', 'train.log', 'launch.log',
@@ -55,7 +56,7 @@ def rpc(alias, operation, payload):
                               'operation': operation, 'payload': payload})
 
 
-def download_checkpoint(source, entry, target):
+def download_checkpoint(source, entry, target, stop_event=None):
     """One SSH stream, with an atomic local replacement; never buffer a GB in RAM."""
     from ai_exp_app.transport.ssh import build_agent_argv
     from ai_exp_app.config import local_settings
@@ -74,17 +75,37 @@ def download_checkpoint(source, entry, target):
     fd, temporary = tempfile.mkstemp(prefix='.checkpoint-', dir=target.parent)
     try:
         with os.fdopen(fd, 'wb') as output:
-            result = subprocess.run(argv, stdout=output, stderr=subprocess.PIPE, timeout=600)
+            with subprocess.Popen(argv, stdout=output, stderr=subprocess.PIPE) as process:
+                deadline = time.monotonic() + 600
+                try:
+                    while True:
+                        if stop_event is not None and stop_event.is_set():
+                            raise OSError('应用退出，checkpoint 下载已取消')
+                        if time.monotonic() >= deadline:
+                            raise OSError('checkpoint 下载超时，将自动重试')
+                        try:
+                            process.communicate(timeout=1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            continue
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.communicate(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.communicate()
             output.flush()
             os.fsync(output.fileno())
-        if result.returncode or Path(temporary).stat().st_size != entry['size']:
+        if process.returncode or Path(temporary).stat().st_size != entry['size']:
             raise OSError('checkpoint 下载未完成或源文件变化，将自动重试')
         os.replace(temporary, target)
     finally:
         if os.path.exists(temporary): os.unlink(temporary)
 
 
-def sync_history(record, cache_root):
+def sync_history(record, cache_root, include_checkpoint=True):
     source = record['source']
     target = Path(record['cache_dir'])
     if not target.resolve().is_relative_to(Path(cache_root).resolve()):
@@ -115,6 +136,7 @@ def sync_history(record, cache_root):
         bundled = json.loads(gzip.decompress(base64.b64decode(bundle_snapshot['data']))) if source['kind'] == 'remote' and bundle_snapshot is not None else {}
         copied = []
         checkpoint_downloaded = False
+        checkpoint_entry = next((entry for entry in files if entry['name'] == 'latest.pt'), None)
         previous = {f['name']: f for f in record.get('manifest', [])}
         for entry in files:
             name = entry['name']
@@ -123,6 +145,10 @@ def sync_history(record, cache_root):
             dest = target / name
             if dest.is_symlink():
                 raise ValueError('拒绝写入符号链接')
+            if name == 'latest.pt' and not include_checkpoint:
+                if (record.get('checkpoint_manifest') or previous.get(name)) == entry and dest.is_file() and dest.stat().st_size == entry['size']:
+                    copied.append(name)
+                continue
             if previous.get(name) == entry and dest.is_file() and dest.stat().st_size == entry['size'] and not (name == 'args.json' and record.get('parameter_overrides')):
                 copied.append(name)
                 continue
@@ -202,11 +228,16 @@ def sync_history(record, cache_root):
         else:
             after = bundle_snapshot['after'] if bundle_snapshot is not None and not checkpoint_downloaded else rpc(source.get('ssh_alias', 'gpu'), 'file_manifest', payload)['files']
         warnings = []
-        if checkpoint and 'latest.pt' not in copied:
+        if checkpoint and checkpoint_entry is None:
             warnings.append('没有 latest.pt，无法缓存 checkpoint 或严格续跑')
         if 'args.json' not in copied:
             warnings.append('缺少 args.json，超参数信息不可用')
         if 'metrics.jsonl' not in copied:
             warnings.append('缺少 metrics.jsonl，曲线不可用')
+        checkpoint_update = {}
+        if checkpoint:
+            checkpoint_update['checkpoint_sync_status'] = 'synced' if 'latest.pt' in copied else 'pending' if checkpoint_entry else 'missing'
+            if 'latest.pt' in copied:
+                checkpoint_update['checkpoint_manifest'] = checkpoint_entry
         return {'sync_status': 'synced' if after == files else 'pending', 'files': copied,
-                'warnings': warnings, 'sync_error': None, 'manifest': files, **migrated}
+                'warnings': warnings, 'sync_error': None, 'manifest': files, **checkpoint_update, **migrated}

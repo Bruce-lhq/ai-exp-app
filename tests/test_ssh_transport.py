@@ -54,7 +54,6 @@ def test_rpc_uses_configured_python_utf8_and_platform_ssh(monkeypatch, tmp_path,
 @pytest.mark.parametrize('platform,use_wrapper', [('win32', False), ('linux', True)])
 def test_checkpoint_stream_uses_configured_python_and_binary_io(monkeypatch, tmp_path, platform, use_wrapper):
     import shlex
-    import subprocess
     from pathlib import Path
     from ai_exp_app.config import Config
     from ai_exp_app.history import sync
@@ -70,12 +69,26 @@ def test_checkpoint_stream_uses_configured_python_and_binary_io(monkeypatch, tmp
     observed = {}
     content = b'\x00\xffcheckpoint\x00'
 
-    def run(argv, **kwargs):
-        observed.update(argv=argv, options=kwargs)
-        kwargs['stdout'].write(content)
-        return subprocess.CompletedProcess(argv, 0, None, b'')
+    class Process:
+        returncode = 0
 
-    monkeypatch.setattr(sync.subprocess, 'run', run)
+        def __init__(self, argv, **kwargs):
+            observed.update(argv=argv, options=kwargs)
+            kwargs['stdout'].write(content)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def communicate(self, **kwargs):
+            return None, b''
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(sync.subprocess, 'Popen', Process)
     target = tmp_path / 'download' / 'latest.pt'
     sync.download_checkpoint({'path': '/srv/runs/example', 'ssh_alias': 'gpu'},
                              {'size': len(content), 'mtime_ns': 123}, target)

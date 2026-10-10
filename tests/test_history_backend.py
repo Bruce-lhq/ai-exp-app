@@ -107,7 +107,7 @@ def test_sync_retry_keeps_cache_and_archive(setup, monkeypatch):
     store.put('history',record['id'],record)
     import ai_exp_app.history.worker as worker
     real_sync = worker.sync_history
-    def offline(*args):
+    def offline(*args, **kwargs):
         raise ConnectionError('offline')
     monkeypatch.setattr(worker, 'sync_history', offline)
     worker.sync_once(store, cache)
@@ -406,7 +406,7 @@ def test_file_refresh_preserves_metadata_arriving_during_transfer(setup, monkeyp
     source_info = {'kind': 'remote', 'path': '/runs/shared', 'ssh_alias': 'gpu'}
     store.put('history', 'shared', {'id': 'shared', 'run_id': 'shared', 'name': 'original',
         'source': source_info, 'cache_dir': str(cache / 'shared'), 'visibility': 'visible', 'notes': ''})
-    def transfer(record, cache_root):
+    def transfer(record, cache_root, **kwargs):
         incoming = store.get('history', 'shared')
         incoming.update(name='cloud name', notes='cloud edit', visibility='archived')
         store.put('history', 'shared', incoming)

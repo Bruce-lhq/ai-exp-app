@@ -75,7 +75,7 @@ def import_history(store, source, cache_root, name=None, run_id=None, synchroniz
             existing['visibility'] = 'visible'
             store.put('history', existing['id'], existing)
             if synchronize:
-                update = {**sync_history(existing, cache_root), 'sync_failures': 0, 'next_retry_at': 0}
+                update = {**sync_history(existing, cache_root, include_checkpoint=False), 'sync_failures': 0, 'next_retry_at': 0}
                 return save_cache_update(store, existing['id'], update)
             return enrich(existing)
     identity = run_id or str(uuid.uuid4())
@@ -89,7 +89,7 @@ def import_history(store, source, cache_root, name=None, run_id=None, synchroniz
               'created_at': datetime.now(timezone.utc).isoformat()}
     try:
         if synchronize:
-            record.update(sync_history(record, cache_root))
+            record.update(sync_history(record, cache_root, include_checkpoint=False))
     except (OSError, ValueError, RuntimeError) as exc:
         if source['kind'] == 'local':
             raise ValueError(str(exc)) from exc

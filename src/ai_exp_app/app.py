@@ -4,6 +4,7 @@ import os
 import secrets
 import uuid
 import time
+import threading
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
@@ -17,7 +18,7 @@ from ai_exp_app.security import LocalSessionMiddleware
 from ai_exp_app.projects.api import create_router as project_router
 from ai_exp_app.runs.service import RunService
 from ai_exp_app.history.api import create_router as history_router
-from ai_exp_app.history.worker import sync_once
+from ai_exp_app.history.worker import sync_checkpoints, sync_once
 from ai_exp_app.workspace_api import WorkspaceSync
 
 
@@ -47,19 +48,32 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             except Exception as exc:
                 store.put("system", "sync_error", {"error": str(exc)})
 
+    checkpoint_stop = threading.Event()
+
+    async def checkpoint_worker():
+        while True:
+            await asyncio.sleep(15)
+            await asyncio.to_thread(sync_checkpoints, store, config.cache_root, checkpoint_stop)
+
     @asynccontextmanager
     async def lifespan(app):
+        checkpoint_stop.clear()
         task = asyncio.create_task(worker())
         history_task = asyncio.create_task(history_worker())
+        checkpoint_task = asyncio.create_task(checkpoint_worker())
         workspace_task = asyncio.create_task(workspace_sync.worker())
         yield
+        checkpoint_stop.set()
         task.cancel()
         history_task.cancel()
+        checkpoint_task.cancel()
         workspace_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
         with contextlib.suppress(asyncio.CancelledError):
             await history_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await checkpoint_task
         with contextlib.suppress(asyncio.CancelledError):
             await workspace_task
 
