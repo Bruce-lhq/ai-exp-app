@@ -55,7 +55,7 @@ def test_status_churn_keeps_transferred_manifest(tmp_path, monkeypatch):
     manifest = files.file_manifest
     calls = []
     def changing(payload):
-        if calls: status.write_text('{"tick":3}')
+        if calls: status.write_text('{"tick":333}')
         result = manifest(payload)
         calls.append(result)
         if len(calls) == 1: status.write_text('{"tick":2}')
