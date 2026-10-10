@@ -22,12 +22,15 @@ def test_checkpoint_transfer_does_not_block_history_actions(tmp_path, monkeypatc
     (origin / 'latest.pt').write_bytes(b'checkpoint')
     cache = tmp_path / 'cache'
     store = Store(tmp_path / 'db.sqlite')
-    monkeypatch.setattr(sync, 'rpc', lambda alias, operation, payload: files.sync_files(payload))
+    monkeypatch.setattr(sync, 'rpc', lambda alias, operation, payload:
+                        files.sync_files({**payload, 'path': str(origin)}))
     app = FastAPI()
     app.include_router(create_router(store, cache))
     client = TestClient(app)
-    payload = {'source': {'kind': 'remote', 'path': str(origin)}, 'name': 'run'}
-    record = client.post('/api/history/import', json=payload).json()
+    payload = {'source': {'kind': 'remote', 'path': '/runs/run'}, 'name': 'run'}
+    response = client.post('/api/history/import', json=payload)
+    assert response.status_code == 200, response.text
+    record = response.json()
     identity = record['id']
     store.put('history', identity, {**store.get('history', identity), 'status': 'completed'})
     record = client.post('/api/history/import', json=payload).json()
