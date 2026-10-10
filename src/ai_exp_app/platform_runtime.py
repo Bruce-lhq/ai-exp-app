@@ -114,7 +114,10 @@ def stop_service(config=None, timeout=10):
         pass
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if service_status(config) is None and not (config.data_dir / 'service.json').exists():
+        value = health(identity['url'])
+        if value is not None and value['instance_id'] != identity['instance_id']:
+            raise RuntimeError('此端口的工作台属于其他工作空间')
+        if value is None and not (config.data_dir / 'service.json').exists():
             return True
         time.sleep(.1)
     raise RuntimeError('本地服务未在限定时间内退出')

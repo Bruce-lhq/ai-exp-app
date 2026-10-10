@@ -231,6 +231,37 @@ def test_shutdown_socket_disconnect_waits_for_private_identity_cleanup(tmp_path)
         thread.join()
 
 
+@pytest.mark.parametrize('replacement', [False, True], ids=['owned-shutdown', 'foreign-service'])
+def test_shutdown_identity_cleanup_precedes_port_closure(tmp_path, monkeypatch, replacement):
+    import io
+    from ai_exp_app import platform_runtime as runtime
+
+    config = Config(tmp_path, tmp_path / 'cache', port=8765)
+    identity_file = tmp_path / 'service.json'
+    identity = {'url': 'http://127.0.0.1:8765', 'instance_id': 'owned'}
+    identity_file.write_text(json.dumps(identity))
+    (tmp_path / 'desktop-token').write_text('test-token')
+    calls = []
+
+    def health(url):
+        calls.append(url)
+        if len(calls) == 1:
+            return {'app': 'ai-exp-app', 'instance_id': 'owned'}
+        if len(calls) == 2:
+            identity_file.unlink()
+            return {'app': 'ai-exp-app', 'instance_id': 'foreign' if replacement else 'owned'}
+        return None
+
+    monkeypatch.setattr(runtime, 'health', health)
+    monkeypatch.setattr(runtime.LOCAL_HTTP, 'open', lambda *args, **kwargs: io.BytesIO(b'{"ok":true}'))
+    if replacement:
+        with pytest.raises(RuntimeError, match='其他工作空间'):
+            stop_service(config)
+    else:
+        assert stop_service(config)
+        assert len(calls) == 3
+
+
 @pytest.mark.parametrize('exception', [ConnectionAbortedError(10053, 'aborted'), ConnectionResetError('reset')])
 def test_health_handles_direct_windows_connection_errors(monkeypatch, exception):
     from ai_exp_app import platform_runtime
