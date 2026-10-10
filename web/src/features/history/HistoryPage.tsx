@@ -66,7 +66,7 @@ export function HistoryPage({
         <div>
           <span className="eyebrow">EXPERIMENT ARCHIVE</span>
           <h1>历史管理</h1>
-          <p>手动导入已有实验。平台实验结束后自动同步到本地。</p>
+          <p>平台实验开始运行后自动加入历史并同步到本地。已有实验可手动导入。</p>
         </div>
         <div className="row">
           <button onClick={() => setSource("local")}>

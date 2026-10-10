@@ -27,7 +27,7 @@ def sync_once(store, cache_root):
                     existing = import_history(store, {'kind': 'remote', 'path': path,
                         'ssh_alias': run.get('ssh_alias', run.get('alias', 'gpu'))}, cache_root,
                         run.get('display_name', run.get('name', identity)), identity, synchronize=False,
-                        visibility='visible' if run.get('status') in TERMINAL else 'tracking')
+                        visibility='visible')
                 except (OSError, ValueError):
                     continue
             if existing:
@@ -43,7 +43,7 @@ def sync_once(store, cache_root):
                     if run.get('project_id'):
                         display = store.get('preferences', f"parameters:{run['project_id']}") or {}
                         existing['parameter_labels'] = display.get('aliases', {})
-                    if existing.get('visibility') == 'tracking' and run.get('status') in TERMINAL:
+                    if existing.get('visibility') == 'tracking' and run.get('status') in TERMINAL | {'running', 'stopping'}:
                         existing['visibility'] = 'visible'
                     store.put('history', existing['id'], existing)
     failed_aliases = set()

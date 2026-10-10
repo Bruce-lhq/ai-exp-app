@@ -87,6 +87,47 @@ def test_removed_terminal_not_readded(setup):
     assert store.get('history','run1')['visibility'] == 'removed'
 
 
+@pytest.mark.parametrize('legacy_tracking', [False, True])
+def test_running_experiment_automatically_becomes_visible_and_stays_same_history(setup, monkeypatch, legacy_tracking):
+    from ai_exp_remote.files import sync_files
+    store, cache, source, client = setup
+    remote_path = '/runs/managed'
+    run = {'id': 'managed', 'status': 'queued', 'mode': 'queue',
+           'remote_path': remote_path, 'display_name': 'queued experiment'}
+    store.put('runs', run['id'], run)
+    monkeypatch.setattr('ai_exp_app.history.sync.rpc', lambda alias, operation, payload:
+                        sync_files({**payload, 'path': str(source)}))
+    if legacy_tracking:
+        import_history(store, {'kind': 'remote', 'path': remote_path}, cache,
+                       run_id=run['id'], synchronize=False, visibility='tracking')
+    sync_once(store, cache)
+    assert client.get('/api/history').json() == []
+
+    run['status'] = 'running'
+    store.put('runs', run['id'], run)
+    sync_once(store, cache)
+    visible = client.get('/api/history').json()
+    assert len(visible) == 1
+    record = visible[0]
+    assert record['id'] == run['id'] and record['visibility'] == 'visible'
+    assert record['status'] == 'running' and record['parameters']['lr'] == .001
+    assert not (Path(record['cache_dir']) / 'latest.pt').exists()
+    assert client.post('/api/analysis/series', json={'history_ids': [run['id']]}).json()['series'][0]['points'][-1]['y'] == 42
+
+    run['status'] = 'completed'
+    store.put('runs', run['id'], run)
+    sync_once(store, cache)
+    assert len(store.list('history')) == 1
+    assert store.get('history', run['id'])['checkpoint_sync_status'] == 'pending'
+    client.patch('/api/history/' + run['id'], json={'visibility': 'archived'})
+    sync_once(store, cache)
+    assert store.get('history', run['id'])['visibility'] == 'archived'
+    client.delete('/api/history/' + run['id'])
+    sync_once(store, cache)
+    assert client.get('/api/history').json() == []
+    assert store.get('history', run['id'])['visibility'] == 'removed'
+
+
 def test_unchanged_sync_does_not_replace_files(setup):
     store, cache, source, client = setup
     record = import_history(store, {'kind':'local','path':str(source)}, cache)
