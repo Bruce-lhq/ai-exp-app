@@ -17,7 +17,7 @@ def test_metric_projection_batches_runs_and_preserves_points(tmp_path):
     (path / 'metrics.jsonl').write_text('\n'.join(map(json.dumps, rows)) + '\n{partial')
     result = metric_series({'runs': [{'id': 'a', 'path': str(path)}, {'id': 'b', 'path': str(path)}], 'metric': 'val_ppl'})
     assert result['a']['points'] == result['b']['points'] == [{'x': 100, 'y': 42}, {'x': 200, 'y': 35}]
-    assert 'train_ppl' in result['a']['metrics']
+    assert result['a']['metrics'] == ['val_ppl']  # Only metrics sampled at multiple token positions.
     assert 'records' not in result['a']
 
 

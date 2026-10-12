@@ -54,7 +54,8 @@ def test_plot_metric_options_require_tokens_and_exclude_coordinates_and_summary(
     rows = [
         {'event': 'train', 'tokens_seen': 1e6, 'step': 10, 'rank': 0,
          'parameter_count': 100, 'perplexity': 42, 'learning_rate': .001},
-        {'event': 'final_ca_stats', 'summary_only': .7},
+        {'event': 'train', 'tokens_seen': 2e6, 'perplexity': 40, 'learning_rate': .001},
+        {'event': 'final_ca_stats', 'tokens_seen': 2e6, 'summary_only': .7},
         {'event': 'train', 'step': 20, 'step_only': .8},
     ]
     (folder / 'metrics.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))

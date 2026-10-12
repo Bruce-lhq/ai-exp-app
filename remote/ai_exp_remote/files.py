@@ -80,7 +80,7 @@ def metric_series(payload):
         raise AgentError('AXIS', '无效横轴')
     result = {}
     for run in payload.get('runs', []):
-        points, available, axes, warnings = [], set(), set(), []
+        points, available, axes, warnings = [], {}, set(), []
         try:
             path = directory(run['path']) / 'metrics.jsonl'
             if path.is_symlink():
@@ -116,12 +116,12 @@ def metric_series(payload):
                         if key in {'perplexity', 'ppl', 'loss'}:
                             prefix = 'val' if event in {'validation', 'val', 'eval', 'evaluation'} else 'train' if event in {'train', 'training'} else None
                             if prefix: name = prefix + '_' + ('ppl' if key in {'perplexity', 'ppl'} else key)
-                        if tokens is not None: available.add(name)
+                        if tokens is not None: available.setdefault(name, set()).add(tokens)
                         if name == metric and isinstance(x, (int, float)) and math.isfinite(x):
                             points.append({'x': x, 'y': value})
         except (OSError, AgentError) as exc:
             warnings.append(str(exc))
-        result[run['id']] = {'points': points, 'metrics': sorted(available), 'axes': sorted(axes), 'warnings': warnings}
+        result[run['id']] = {'points': points, 'metrics': sorted(name for name, positions in available.items() if len(positions) > 1), 'axes': sorted(axes), 'warnings': warnings}
     return result
 
 def list_directory(payload):

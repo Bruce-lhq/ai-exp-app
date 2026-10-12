@@ -273,7 +273,8 @@ def test_parsed_cache_reused_and_invalidated_by_local_refresh(setup, monkeypatch
     monkeypatch.setattr(analysis_api, 'read_metrics', counted)
     payload = {'history_ids': [record['id']], 'metric': 'val_ppl'}
     first = client.post('/api/analysis/series', json=payload).json()
-    assert 'val_ppl' in first['metrics']
+    assert first['series'][0]['points']  # Single-sample curves still render when explicitly selected.
+    assert first['metrics'] == []
     client.post('/api/analysis/series', json=payload)
     assert len(reads) == 1
     (source / 'metrics.jsonl').write_text('{"event":"validation","tokens_seen":200,"perplexity":35}\n')
