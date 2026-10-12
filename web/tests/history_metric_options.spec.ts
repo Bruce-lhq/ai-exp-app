@@ -71,13 +71,14 @@ test('live comparison and offline plotting use the same metric dropdown', async 
     const path = new URL(route.request().url()).pathname;
     let body: any = [];
     if (path === '/api/queue') body = { runs: [], paused: false };
-    if (path === '/api/analysis/series') body = { series: [], metrics: ['train_ppl', 'learning_rate'], axes: ['tokens'], warnings: [] };
+    if (path === '/api/analysis/series') body = { series: [], metrics: ['train_ppl', 'learning_rate', 'best_train_tokens'], axes: ['tokens'], warnings: [] };
     await route.fulfill({ json: body });
   });
   await page.goto('/');
   const metric = page.getByLabel('指标', { exact: true });
   await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
   const options = await metric.locator('option').allTextContents();
+  expect(options).not.toContain('best_train_tokens');
   await page.getByRole('button', { name: '画图与列表', exact: true }).click();
   await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
   expect(await metric.locator('option').allTextContents()).toEqual(options);

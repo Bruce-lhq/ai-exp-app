@@ -120,11 +120,12 @@ def create_router(store):
             except HTTPException as exc:
                 warnings.append(str(exc.detail))
                 continue
-            token_positions = {}
+            token_positions, metric_values = {}, {}
             for row in record['records']:
                 if isinstance(row.get('tokens'), (int, float)):
                     token_positions.setdefault(row['metric'], set()).add(row['tokens'])
-            available_metrics.update(name for name, positions in token_positions.items() if len(positions) > 1)
+                    metric_values.setdefault(row['metric'], set()).add(row['value'])
+            available_metrics.update(name for name, positions in token_positions.items() if len(positions) > 1 and len(metric_values[name]) > 1)
             # Live RPC already filters metric names across all token samples.
             if identity in live_records:
                 available_metrics.update(record['metadata'])
