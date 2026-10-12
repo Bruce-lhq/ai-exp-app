@@ -3,6 +3,7 @@ import { Pause, Play, Square, GripVertical, RefreshCw, Trash2 } from "lucide-rea
 import { api, items, type Run } from "../../app/api";
 import { Empty, Modal } from "../../app/ui";
 import { move } from "../parameters/values";
+import { metricOptions } from "../analysis/metrics";
 import {
   ExperimentChart,
   seriesColors,
@@ -40,7 +41,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
     [metric, setMetric] = useState("val_ppl"),
     [axis, setAxis] = useState("tokens"),
-    [metrics, setMetrics] = useState<string[]>(["val_ppl"]),
+    [metrics, setMetrics] = useState<string[]>(metricOptions([])),
     [title, setTitle] = useState(() => localStorage.getItem("monitor.title") || ""),
     [appearance, setAppearance] = useState<Record<string, { name?: string; color?: string; order?: number }>>(() => {
       try { return JSON.parse(localStorage.getItem("monitor.appearance") || "{}"); } catch { return {}; }
@@ -74,10 +75,22 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       if (active) timer = setTimeout(poll, 3000);
     };
     void poll();
-    api("/api/history")
-      .then((x) => setHistory(items(x)))
-      .catch(() => {});
     return () => { active = false; clearTimeout(timer); };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const refreshHistory = () => api("/api/history", undefined, undefined, { background: true })
+      .then((x) => {
+        if (!active) return;
+        const visible = items(x).filter((h) => !["archived", "removed", "tracking"].includes(h.visibility));
+        setHistory(visible);
+        const ids = new Set(visible.map((h) => h.id));
+        setComparisons((current) => current.filter((id) => ids.has(id)));
+      }).catch(() => {});
+    void refreshHistory();
+    const timer = setInterval(refreshHistory, 10000);
+    window.addEventListener("workspace-sync-changed", refreshHistory);
+    return () => { active = false; clearInterval(timer); window.removeEventListener("workspace-sync-changed", refreshHistory); };
   }, []);
   const liveIdsKey = JSON.stringify(runs.filter((run) => ["running", "starting", "stopping", "external_running"].includes(run.status)).map((run) => run.id));
   useEffect(() => {
@@ -94,8 +107,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         if (alive) {
           const available: string[] = x.metrics || [];
           const axes: string[] = x.axes || [];
-          setMetrics([...new Set([metric, ...available])]);
-          if (available.length && !available.includes(metric)) setMetric(available[0]);
+          setMetrics(metricOptions([metric, ...available]));
           if (axes.length && !axes.includes(axis)) setAxis(axes.includes("step") ? "step" : axes[0]);
           setSeries(x.series || []);
           setCurveWarning((x.warnings || []).join("；"));

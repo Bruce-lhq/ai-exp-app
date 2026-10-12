@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, Download, Plus, Save, GripVertical } from "lucide-react";
 import { api, download, items } from "../../app/api";
 import { move } from "../parameters/values";
+import { commonMetrics, metricOptions } from "./metrics";
 export type Column = {
   id: string;
   kind: string;
@@ -15,7 +16,7 @@ export function TablePanel({
   ids,
   history,
   notify,
-  metrics = ["val_ppl", "train_ppl", "R_min", "R_mean", "update_rms"],
+  metrics = commonMetrics,
 }: {
   ids: string[];
   history: any[];
@@ -350,7 +351,7 @@ export function TablePanel({
               </select>
             </label> : <label>选择指标：
               <select aria-label="选择指标列" value={metricChoice} onChange={(e) => setMetricChoice(e.target.value)}>
-                {[...new Set([...metrics, "tokens_per_second"])].filter((m) => !/^ca\/L\d+\/T\d+\//.test(m)).map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (tok/s)" : metric}</option>)}
+                {metricOptions([...metrics, "tokens_per_second"]).map((metric) => <option key={metric} value={metric}>{metric === "tokens_per_second" ? "速度 (tok/s)" : metric}</option>)}
               </select>
             </label>}
             <button disabled={columnKind === "parameter" && !parameterChoice} onClick={() => columnKind === "parameter" ? addParameter(parameterChoice) : add("metric")}><Plus size={14} />添加</button>
