@@ -71,14 +71,16 @@ test('live comparison and offline plotting use the same metric dropdown', async 
     const path = new URL(route.request().url()).pathname;
     let body: any = [];
     if (path === '/api/queue') body = { runs: [], paused: false };
-    if (path === '/api/analysis/series') body = { series: [], metrics: ['train_ppl', 'learning_rate', 'best_train_tokens'], axes: ['tokens'], warnings: [] };
+    if (path === '/api/analysis/series') body = { series: [], metrics: ['train_ppl', 'learning_rate', 'best_train_tokens', 'tokens_per_second', 'latest_val_perplexity', 'best_val_loss'], axes: ['tokens'], warnings: [] };
     await route.fulfill({ json: body });
   });
   await page.goto('/');
   const metric = page.getByLabel('指标', { exact: true });
   await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
   const options = await metric.locator('option').allTextContents();
-  expect(options).not.toContain('best_train_tokens');
+  for (const hidden of ['best_train_tokens', 'tokens_per_second', 'latest_val_perplexity', 'best_val_loss']) {
+    expect(options).not.toContain(hidden);
+  }
   await page.getByRole('button', { name: '画图与列表', exact: true }).click();
   await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
   expect(await metric.locator('option').allTextContents()).toEqual(options);

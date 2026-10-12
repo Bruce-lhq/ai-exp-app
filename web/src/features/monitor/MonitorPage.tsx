@@ -3,7 +3,7 @@ import { Pause, Play, Square, GripVertical, RefreshCw, Trash2 } from "lucide-rea
 import { api, items, type Run } from "../../app/api";
 import { Empty, Modal } from "../../app/ui";
 import { move } from "../parameters/values";
-import { metricOptions } from "../analysis/metrics";
+import { curveMetricOptions } from "../analysis/metrics";
 import {
   ExperimentChart,
   seriesColors,
@@ -41,7 +41,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
     [series, setSeries] = useState<Series[]>(lastPlot?.key === JSON.stringify(['val_ppl', []]) ? lastPlot.series : []),
     [metric, setMetric] = useState("val_ppl"),
     [axis, setAxis] = useState("tokens"),
-    [metrics, setMetrics] = useState<string[]>(metricOptions([])),
+    [metrics, setMetrics] = useState<string[]>(curveMetricOptions([])),
     [title, setTitle] = useState(() => localStorage.getItem("monitor.title") || ""),
     [appearance, setAppearance] = useState<Record<string, { name?: string; color?: string; order?: number }>>(() => {
       try { return JSON.parse(localStorage.getItem("monitor.appearance") || "{}"); } catch { return {}; }
@@ -107,7 +107,7 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         if (alive) {
           const available: string[] = x.metrics || [];
           const axes: string[] = x.axes || [];
-          const options = metricOptions(available);
+          const options = curveMetricOptions(available);
           setMetrics(options);
           if (!options.includes(metric)) setMetric(options[0]);
           if (axes.length && !axes.includes(axis)) setAxis(axes.includes("step") ? "step" : axes[0]);

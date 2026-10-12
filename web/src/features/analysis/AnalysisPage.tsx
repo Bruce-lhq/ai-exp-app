@@ -11,7 +11,7 @@ import {
 } from "./ExperimentChart";
 import { useSharedPlotView } from "./useSharedPlotView";
 import { TablePanel } from "./TablePanel";
-import { metricOptions } from "./metrics";
+import { curveMetricOptions } from "./metrics";
 const initial: ChartSettings = {
   metric: "val_ppl",
   xAxis: "tokens",
@@ -70,7 +70,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
     [settings, setSettings] = useState<ChartSettings>(initialSettings),
     [series, setSeries] = useState<Series[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.series : []),
     [warnings, setWarnings] = useState<string[]>(() => lastPlot?.key === plotKey(ids, settings) ? lastPlot.warnings : []),
-    [metrics, setMetrics] = useState(() => metricOptions(lastPlot?.key === plotKey(ids, settings) ? lastPlot.metrics : [])),
+    [metrics, setMetrics] = useState(() => curveMetricOptions(lastPlot?.key === plotKey(ids, settings) ? lastPlot.metrics : [])),
     [advanced, setAdvanced] = useState(false),
     [appearance, setAppearance] = useState(initialAppearance),
     [appearanceDrag, setAppearanceDrag] = useState("");
@@ -115,7 +115,7 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           }
           const snapshot = {key: plotKey(ids, settings), series: x.series || [],
             warnings: (x.warnings || []).map((w: any) => w.message || w),
-            metrics: metricOptions(x.metrics || [])};
+            metrics: curveMetricOptions(x.metrics || [])};
           lastPlot = snapshot;
           setSeries(snapshot.series);
           setWarnings(snapshot.warnings);
