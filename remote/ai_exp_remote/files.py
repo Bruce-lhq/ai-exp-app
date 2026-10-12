@@ -102,13 +102,21 @@ def metric_series(payload):
                               'step': ('step', 'global_step', 'optimizer_step'),
                               'elapsed_s': ('elapsed_s', 'elapsed_seconds')}[axis]
                     x = next((item[k] for k in x_keys if isinstance(item.get(k), (int, float))), None)
+                    tokens = next((item[k] for k in axis_keys['tokens']
+                                   if isinstance(item.get(k), (int, float)) and not isinstance(item[k], bool)
+                                   and math.isfinite(item[k])), None)
+                    excluded = {key for keys in axis_keys.values() for key in keys} | {
+                        'time', 'timestamp', 'rank', 'epoch', 'data_step', 'parameter_count',
+                        'num_parameters', 'num_params', 'total_params', 'n_params',
+                        'total_parameters', 'trainable_parameters'}
                     for key, value in values.items():
+                        if key in excluded: continue
                         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value): continue
                         name = key
                         if key in {'perplexity', 'ppl', 'loss'}:
                             prefix = 'val' if event in {'validation', 'val', 'eval', 'evaluation'} else 'train' if event in {'train', 'training'} else None
                             if prefix: name = prefix + '_' + ('ppl' if key in {'perplexity', 'ppl'} else key)
-                        available.add(name)
+                        if tokens is not None: available.add(name)
                         if name == metric and isinstance(x, (int, float)) and math.isfinite(x):
                             points.append({'x': x, 'y': value})
         except (OSError, AgentError) as exc:

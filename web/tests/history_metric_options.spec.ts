@@ -25,7 +25,7 @@ test('monitor comparisons exclude hidden history and drop an archived selection 
   await picker.getByLabel('可见历史').check();
   await expect.poll(() => requests.at(-1)?.history_ids).toEqual(['visible']);
   for (const metric of ['R_min', 'R_mean', 'train_ppl', 'update_rms']) {
-    await page.getByLabel('指标', { exact: true }).fill(metric);
+    await page.getByLabel('指标', { exact: true }).selectOption(metric);
     await expect(page.getByText(`缺少 ${metric}`, { exact: true })).toBeVisible();
     await expect(page.getByLabel('指标', { exact: true })).toHaveValue(metric);
   }
@@ -64,4 +64,21 @@ test('plot and table offer training diagnostics even when selected experiments l
   for (const metric of ['R_min', 'R_mean', 'train_ppl', 'update_rms']) {
     await expect(page.getByLabel('选择指标列').locator(`option[value="${metric}"]`)).toHaveCount(1);
   }
+});
+
+test('live comparison and offline plotting use the same metric dropdown', async ({ page }) => {
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    let body: any = [];
+    if (path === '/api/queue') body = { runs: [], paused: false };
+    if (path === '/api/analysis/series') body = { series: [], metrics: ['train_ppl', 'learning_rate'], axes: ['tokens'], warnings: [] };
+    await route.fulfill({ json: body });
+  });
+  await page.goto('/');
+  const metric = page.getByLabel('指标', { exact: true });
+  await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
+  const options = await metric.locator('option').allTextContents();
+  await page.getByRole('button', { name: '画图与列表', exact: true }).click();
+  await expect(metric.getByRole('option', { name: 'learning_rate', exact: true })).toHaveCount(1);
+  expect(await metric.locator('option').allTextContents()).toEqual(options);
 });

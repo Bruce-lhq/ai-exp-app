@@ -107,7 +107,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
         if (alive) {
           const available: string[] = x.metrics || [];
           const axes: string[] = x.axes || [];
-          setMetrics(metricOptions([metric, ...available]));
+          const options = metricOptions(available);
+          setMetrics(options);
+          if (!options.includes(metric)) setMetric(options[0]);
           if (axes.length && !axes.includes(axis)) setAxis(axes.includes("step") ? "step" : axes[0]);
           setSeries(x.series || []);
           setCurveWarning((x.warnings || []).join("；"));
@@ -212,10 +214,9 @@ export function MonitorPage({ notify }: { notify: (s: string) => void }) {
       <section className="panel live-chart-panel">
         <div className="panel-heading"><div><h3>当前运行曲线</h3><small className="muted">实时读取正在运行实验的指标</small></div><span className="count">{series.length}</span></div>
         <div className="toolbar">
-          <label>指标 <input value={metric} onChange={(e) => setMetric(e.target.value)} list="monitor-metrics" /></label>
+          <label>指标 <select aria-label="指标" value={metric} onChange={(e) => setMetric(e.target.value)}>{metrics.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
           <label>图标题 <input value={title} onChange={(e) => setTitle(e.target.value.trim())} /></label>
           <details><summary>历史对照（{comparisons.length}）</summary><button className="subtle" onClick={() => setComparisons(comparisons.length === history.length ? [] : history.map((h) => h.id))}>{comparisons.length === history.length ? "取消全选" : "全选"}</button>{history.map((h) => <label className="check" key={h.id}><input type="checkbox" checked={comparisons.includes(h.id)} onChange={(e) => setComparisons(e.target.checked ? [...comparisons, h.id] : comparisons.filter((id) => id !== h.id))} />{h.name || h.display_name}</label>)}</details>
-          <datalist id="monitor-metrics">{metrics.map((name) => <option key={name}>{name}</option>)}</datalist>
           <label>横轴 <select aria-label="运行监控横轴" value={axis} onChange={(event) => setAxis(event.target.value)}><option value="tokens">训练 tokens</option><option value="step">step</option><option value="elapsed_s">实际训练耗时</option></select></label>
         </div>
         {curveWarning && <p className="warning">{curveWarning}</p>}

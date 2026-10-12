@@ -115,11 +115,14 @@ export function AnalysisPage({ notify }: { notify: (s: string) => void }) {
           }
           const snapshot = {key: plotKey(ids, settings), series: x.series || [],
             warnings: (x.warnings || []).map((w: any) => w.message || w),
-            metrics: metricOptions([settings.metric, ...(x.metrics || [])])};
+            metrics: metricOptions(x.metrics || [])};
           lastPlot = snapshot;
           setSeries(snapshot.series);
           setWarnings(snapshot.warnings);
           setMetrics(snapshot.metrics);
+          if (!snapshot.metrics.includes(settings.metric)) {
+            setSettings((current) => ({ ...current, metric: snapshot.metrics[0] }));
+          }
         }
       })
       .catch((e) => {

@@ -120,7 +120,8 @@ def create_router(store):
             except HTTPException as exc:
                 warnings.append(str(exc.detail))
                 continue
-            available_metrics.update(record['metadata'])
+            available_metrics.update(row['metric'] for row in record['records']
+                                     if isinstance(row.get('tokens'), (int, float)))
             available_axes.update(record.get('axes', []))
             available_axes.update(key for row in record['records'] for key in ('tokens', 'step', 'elapsed_s')
                                   if isinstance(row.get(key), (int, float)))
